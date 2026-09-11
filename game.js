@@ -370,10 +370,12 @@ document.querySelectorAll(".laneZone").forEach(function (zone) {
 });
 
 
-/* ================= STARS ================= */
+/* ================= STARS =================
+   "stars" is really a dollar count now - one correct sort = $1 earned -
+   just displayed as currency instead of a bare number. */
 
 function updateStars() {
-    setText(starsValueDisplay, String(stars));
+    setText(starsValueDisplay, `$${stars.toFixed(2)}`);
 }
 
 
