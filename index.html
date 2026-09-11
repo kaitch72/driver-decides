@@ -37,114 +37,93 @@
     </div>
 
 
-    <!-- ================= HUD ================= -->
+    <!-- ================= HUD =================
+         Rebuilt for the needs-vs-wants sorting rework (2026-09-10): the
+         wallet/purchases stats are gone (no money math in this version at
+         all) - just how many you've sorted right, and the round's goal. -->
 
     <div id="hud">
 
-        <div class="moneyBox">
+        <div class="starsBox">
             <span class="statLabel">
-                <svg class="mini-icon" viewBox="0 0 159.81 129.77" aria-hidden="true">
-                    <ellipse cx="119.81" cy="74.87" rx="7.43" ry="7.42"/>
-                    <polygon points="149.85 29.95 30.02 29.95 30.02 19.97 159.81 19.97 159.8 129.77 0 129.77 0 0 149.75 0 149.75 9.98 9.94 9.99 9.96 119.79 149.85 119.79 149.85 29.95"/>
+                <svg class="mini-icon" viewBox="0 0 179.8 170" aria-hidden="true">
+                    <polygon points="159.82 49.96 149.85 50 149.86 30 129.88 30 129.88 19.99 149.86 20 149.85 0 159.82 0 159.82 20 179.79 19.99 179.8 30 159.82 29.99 159.82 49.96"/>
+                    <polygon points="149.83 169.96 139.86 170 139.87 150 119.89 150 119.89 139.99 139.87 140 139.86 120 149.83 120 149.82 140 169.8 139.99 169.8 150 149.83 149.99 149.83 169.96"/>
+                    <path d="M64.87,149.82l-20.03-44.88L0,84.99l44.96-20.07,19.91-44.96,20.01,45.1,44.86,19.96-44.93,20-19.93,44.81ZM64.88,125.25l12.55-27.81,27.77-12.46-27.88-12.52-12.45-27.71-12.55,27.76-27.72,12.49,27.75,12.48,12.53,27.76Z"/>
                 </svg>
-                Wallet
+                Stars
             </span>
-            <span class="statValue" id="wallet">$0</span>
-        </div>
-
-        <div id="itemsBox">
-            <span class="statLabel">
-                <svg class="mini-icon" viewBox="0 0 139.9 159.72" aria-hidden="true">
-                    <rect x="40.02" y="49.91" width="59.92" height="9.98"/>
-                    <path d="M139.9,159.72H.07S0,65.47,0,65.47C-.02,43.32,17.06,25.41,39.3,24.99l5.71-.02V0s49.93,0,49.93,0v24.9s9.39.29,9.39.29c20.23,2.4,35.53,19.18,35.54,39.78l.03,94.75ZM84.98,9.98h-30v14.97h30v-14.97ZM109.94,79.86v69.88s20.01,0,20.01,0l-.02-84.97c-.35-16.42-13.17-29.78-29.76-29.78h-60.38c-15.85,0-28.76,12.39-29.76,28.06v86.7s20.01,0,20.01,0v-69.88s79.9,0,79.9,0ZM39.99,89.84v59.89h59.97v-59.89h-59.97Z"/>
-                </svg>
-                Items
-            </span>
-            <div id="items">
-                <span style="opacity:.35;">None yet</span>
-            </div>
-        </div>
-
-        <div id="goalBox">
-            <div id="goalTitle">
-                <svg class="mini-icon" viewBox="0 0 159.65 159.5" aria-hidden="true">
-                    <path d="M159.65,79.75c0,44.04-35.74,79.75-79.83,79.75S0,123.8,0,79.75,35.74,0,79.83,0s79.83,35.71,79.83,79.75ZM149.75,79.75c0-38.58-31.31-69.86-69.93-69.86S9.9,41.16,9.9,79.75s31.31,69.86,69.93,69.86,69.93-31.28,69.93-69.86Z"/>
-                    <path d="M129.7,79.75c0,27.52-22.33,49.83-49.88,49.83s-49.88-22.31-49.88-49.83,22.33-49.83,49.88-49.83,49.88,22.31,49.88,49.83ZM119.8,79.75c0-22.06-17.9-39.94-39.98-39.94s-39.98,17.88-39.98,39.94,17.9,39.94,39.98,39.94,39.98-17.88,39.98-39.94Z"/>
-                    <path d="M99.71,79.75c0,10.97-8.9,19.86-19.88,19.86s-19.88-8.89-19.88-19.86,8.9-19.86,19.88-19.86,19.88,8.89,19.88,19.86ZM89.84,79.76c0-5.52-4.48-10-10.01-10s-10.01,4.48-10.01,10,4.48,10,10.01,10,10.01-4.48,10.01-10Z"/>
-                </svg>
-                My Prize Goal:
-                <strong id="goalName">Choose a prize</strong>
-            </div>
-
-            <div id="progressTrack">
-                <div id="goalProgressFill"></div>
-            </div>
-
-            <div id="goalProgressText">$0 / $0</div>
-
+            <span class="statValue" id="starsValue">0</span>
         </div>
 
     </div>
 
 
-    <!-- ================= WORLD ================= -->
+    <!-- ================= ROAD SCENE =================
+         Rebuilt again (2026-09-10, drag rework): NEED and WANT are now the
+         things rolling continuously down the road, one per lane - pure
+         driving/lane signage, not the question itself. The actual question
+         is the item word in the fixed #itemPopup at top center, which never
+         moves. The scooter is drag-steered left/right by the player; where
+         it sits when the timer runs out is the answer. -->
 
-    <div id="sky"></div>
-    <div id="grass"></div>
+    <div id="roadScene">
 
-    <div id="road"></div>
+        <img id="bgImage" class="bg-image" src="images/Background.svg" alt="">
 
+        <!-- Purely decorative sky - a sun that pulses gently in the top
+             right, and two clouds that drift slowly across from one side
+             to the other on their own independent loops. -->
+        <div id="skyLayer" aria-hidden="true">
+            <img class="sunDecor" src="images/sun.svg" alt="">
+            <img class="cloudDecor cloudDecor--1" src="images/cloud1.svg" alt="" style="top:9%; width:13%; animation-duration:48s; animation-delay:-6s;">
+            <img class="cloudDecor cloudDecor--2" src="images/cloud2.svg" alt="" style="top:19%; width:9%; animation-duration:62s; animation-delay:-34s;">
+        </div>
 
-    <!-- ================= SCENERY =================
-         Kayla's two exported tree icons (single pine / pine cluster)
-         replace the old 🌳 emoji so the roadside matches the flat,
-         single-color icon language used everywhere else (2026-08-27). -->
+        <!-- Purely decorative trees along the grass, gently swaying in a
+             breeze. Four, at different depths/sides to match the road's
+             perspective: small ones far back on both the left and right,
+             a medium one at mid-distance on the right, and a large one up
+             front on the left. -->
+        <div id="treeLayer" aria-hidden="true">
+            <div class="treeSpot" style="left:15%; top:42%; width:6%;">
+                <img class="treeDecor" src="images/tree.svg" alt="" style="animation-duration:3.6s; animation-delay:0s;">
+            </div>
+            <div class="treeSpot" style="left:85%; top:42%; width:6%;">
+                <img class="treeDecor" src="images/tree.svg" alt="" style="animation-duration:3.8s; animation-delay:0.3s;">
+            </div>
+            <div class="treeSpot" style="left:92%; top:60%; width:9%;">
+                <img class="treeDecor" src="images/tree.svg" alt="" style="animation-duration:4.0s; animation-delay:0.9s;">
+            </div>
+            <div class="treeSpot" style="left:3%; top:80%; width:13%;">
+                <img class="treeDecor" src="images/tree.svg" alt="" style="animation-duration:3.9s; animation-delay:1.1s;">
+            </div>
+        </div>
 
-    <div class="tree tree1">
-        <svg class="tree-icon" viewBox="0 0 143.31 172.77" aria-hidden="true">
-            <path d="M76.38,172.73l-9.45.05v-28.36s-66.93-.03-66.93-.03l36.84-43.42-27.64-.08,32.56-38.5-23.76-.2L71.65,0l53.68,62.18-23.75.21,32.54,38.5-27.38.06,36.58,43.44-66.94.02v28.32ZM20.3,134.95h102.72s-27.93-32.86-27.93-32.86l-8.66-10.59,27.32-.07-32.58-38.55,23.48-.12L71.65,14.37l-32.69,38.39,23.38.1-4.85,5.56-27.97,33.01,27.7.07-7.57,9.2-29.34,34.25Z"/>
-        </svg>
-    </div>
-    <div class="tree tree2">
-        <svg class="tree-icon tree-icon--cluster" viewBox="0 0 198.09 162.79" aria-hidden="true">
-            <path d="M161.44,63.1l33.2,39.75-29.25.1,32.7,39.86h-59.02s-.01,19.97-.01,19.97h-9.96s0-19.96,0-19.96h-59.96s0,19.96,0,19.96h-9.96s0-19.95,0-19.95l-59.18-.03,32.69-39.86-29.3-.09,33.31-39.83-22.95-.09L64.22.01l50.15,62.94-22.93.1,33.29,39.81-29.26.09,24.58,29.9h56.84s-32.69-39.82-32.69-39.82l29.21-.15-33.3-39.82,23.35-.09-29.31-36.77-19.02,23.61-6.58-7.98L134.14,0l50.15,62.94-22.85.16ZM106.95,132.84l-32.71-39.86,28.98-.08-33.02-39.84,23.34-.1-29.63-36.78-29.34,36.79,23.32.11-32.9,39.79,28.87.12-33.04,39.86h86.13Z"/>
-        </svg>
-    </div>
-    <div class="tree tree3">
-        <svg class="tree-icon" viewBox="0 0 143.31 172.77" aria-hidden="true">
-            <path d="M76.38,172.73l-9.45.05v-28.36s-66.93-.03-66.93-.03l36.84-43.42-27.64-.08,32.56-38.5-23.76-.2L71.65,0l53.68,62.18-23.75.21,32.54,38.5-27.38.06,36.58,43.44-66.94.02v28.32ZM20.3,134.95h102.72s-27.93-32.86-27.93-32.86l-8.66-10.59,27.32-.07-32.58-38.55,23.48-.12L71.65,14.37l-32.69,38.39,23.38.1-4.85,5.56-27.97,33.01,27.7.07-7.57,9.2-29.34,34.25Z"/>
-        </svg>
-    </div>
-    <div class="tree tree4">
-        <svg class="tree-icon tree-icon--cluster" viewBox="0 0 198.09 162.79" aria-hidden="true">
-            <path d="M161.44,63.1l33.2,39.75-29.25.1,32.7,39.86h-59.02s-.01,19.97-.01,19.97h-9.96s0-19.96,0-19.96h-59.96s0,19.96,0,19.96h-9.96s0-19.95,0-19.95l-59.18-.03,32.69-39.86-29.3-.09,33.31-39.83-22.95-.09L64.22.01l50.15,62.94-22.93.1,33.29,39.81-29.26.09,24.58,29.9h56.84s-32.69-39.82-32.69-39.82l29.21-.15-33.3-39.82,23.35-.09-29.31-36.77-19.02,23.61-6.58-7.98L134.14,0l50.15,62.94-22.85.16ZM106.95,132.84l-32.71-39.86,28.98-.08-33.02-39.84,23.34-.1-29.63-36.78-29.34,36.79,23.32.11-32.9,39.79,28.87.12-33.04,39.86h86.13Z"/>
-        </svg>
-    </div>
-    <div class="tree tree5">
-        <svg class="tree-icon" viewBox="0 0 143.31 172.77" aria-hidden="true">
-            <path d="M76.38,172.73l-9.45.05v-28.36s-66.93-.03-66.93-.03l36.84-43.42-27.64-.08,32.56-38.5-23.76-.2L71.65,0l53.68,62.18-23.75.21,32.54,38.5-27.38.06,36.58,43.44-66.94.02v28.32ZM20.3,134.95h102.72s-27.93-32.86-27.93-32.86l-8.66-10.59,27.32-.07-32.58-38.55,23.48-.12L71.65,14.37l-32.69,38.39,23.38.1-4.85,5.56-27.97,33.01,27.7.07-7.57,9.2-29.34,34.25Z"/>
-        </svg>
-    </div>
+        <!-- Purely decorative lane signage, looping continuously down each
+             lane the whole round - always NEED on the left, WANT on the
+             right, so the player always knows which side is which. -->
+        <div id="roadSignsLayer">
+            <div id="roadSignNeed" class="roadSign roadSign--need">NEED</div>
+            <div id="roadSignWant" class="roadSign roadSign--want">WANT</div>
+        </div>
 
+        <!-- Invisible tap targets - a kid can also tap a side instead of
+             dragging the scooter there. -->
+        <div class="laneZone laneZone--need" data-lane="need"></div>
+        <div class="laneZone laneZone--want" data-lane="want"></div>
 
-    <!-- ================= OBSTACLES (spawned by game.js) ================= -->
+        <!-- The word for whatever's being sorted right now. Fixed in
+             place - it never travels down the road. -->
+        <div id="itemPopup" class="itemPopup"></div>
 
-    <div id="obstacles"></div>
+        <!-- Toasts + sparkles for correct/incorrect feedback. -->
+        <div id="feedbackLayer"></div>
 
+        <div id="scooter">
+            <img class="scooter-img" src="images/scooter.svg" alt="">
+        </div>
 
-    <!-- ================= SCOOTER ================= -->
-
-    <div id="scooter">
-        <svg class="scooter-icon" viewBox="0 0 159.8 139.7" aria-hidden="true">
-            <path d="M25.21,89.9c12,.24,21.62,8.43,24.35,19.89h61.01c1.6-8.21,6.94-14.74,14.74-18.12L105.82,9.99h-25.84s0-9.99,0-9.99h34s21.15,89.84,21.15,89.84c11.19.04,20.54,7.59,23.54,17.46,3.36,11.05-1.07,22.29-10.13,28.3-9.44,6.26-21.98,5.24-30.35-2.29-4.05-3.64-6.57-8.08-7.65-13.52h-61.03c-2.79,12.84-14.82,21.39-27.77,19.71C8.75,137.8-.94,126.11.07,113.05c1-12.93,11.8-23.41,25.14-23.15ZM39.94,114.77c0-8.28-6.72-14.98-15-14.98s-15,6.71-15,14.98,6.72,14.98,15,14.98,15-6.71,15-14.98ZM149.84,114.77c0-8.28-6.72-14.98-15-14.98s-15,6.71-15,14.98,6.72,14.98,15,14.98,15-6.71,15-14.98Z"/>
-        </svg>
-    </div>
-
-
-    <!-- ================= INSTRUCTIONS ================= -->
-
-    <div id="instructions">
-        Earn it, or spend it — every catch is your call!
     </div>
 
 
@@ -174,7 +153,7 @@
 
                 <div class="start-badge">
                     <svg class="start-badge-icon" viewBox="0 0 159.8 139.7" aria-hidden="true">
-                        <path d="M25.21,89.9c12,.24,21.62,8.43,24.35,19.89h61.01c1.6-8.21,6.94-14.74,14.74-18.12L105.82,9.99h-25.84s0-9.99,0-9.99h34s21.15,89.84,21.15,89.84c11.19.04,20.54,7.59,23.54,17.46,3.36,11.05-1.07,22.29-10.13,28.3-9.44,6.26-21.98,5.24-30.35-2.29-4.05-3.64-6.57-8.08-7.65-13.52h-61.03c-2.79,12.84-14.82,21.39-27.77,19.71C8.75,137.8-.94,126.11.07,113.05c1-12.93,11.8-23.41,25.14-23.15ZM39.94,114.77c0-8.28-6.72-14.98-15-14.98s-15,6.71-15,14.98,6.72,14.98,15,14.98,15-6.71,15-14.98ZM149.84,114.77c0-8.28-6.72-14.98-15-14.98s-15,6.71-15,14.98,6.72,14.98,15,14.98,15-6.71,15-14.98Z"/>
+                        <path d="M25.211,89.905c12,.241,21.621,8.435,24.347,19.887l61.013-.005c1.603-8.208,6.944-14.734,14.737-18.112L105.815,9.987l-25.841-.005.01-9.982,34,.003,21.153,89.834c11.188.041,20.54,7.586,23.541,17.458,3.36,11.052-1.068,22.286-10.13,28.299-9.443,6.265-21.983,5.245-30.354-2.295-4.046-3.644-6.567-8.075-7.653-13.523l-61.028-.015c-2.794,12.853-14.821,21.408-27.771,19.729S-.936,126.109.072,113.05c.997-12.926,11.796-23.414,25.139-23.145ZM39.942,114.77c0-8.276-6.716-14.985-15-14.985s-15,6.709-15,14.985,6.716,14.985,15,14.985,15-6.709,15-14.985ZM149.842,114.77c0-8.276-6.716-14.985-15-14.985s-15,6.709-15,14.985,6.716,14.985,15,14.985,15-6.709,15-14.985Z"/>
                     </svg>
                 </div>
 
@@ -183,7 +162,7 @@
             <h1>Driver Decides</h1>
 
             <p class="introLead">
-                Steer your scooter to catch dollars and earn, or treats to spend — save enough to reach each round's savings goal to win!
+                A word will pop up for something people buy. Drag your scooter into the NEED lane or the WANT lane before time runs out!
             </p>
 
             <button
@@ -232,18 +211,9 @@
 
             <div id="roundLabel" class="round-label"></div>
 
-            <div id="goalPreview" class="goal-preview">
-
-                <div class="goal-preview-row">
-                    <span id="finalPrizeIcon" class="goal-preview-icon-wrap"></span>
-                    <span id="finalPrizeCost" class="goal-preview-cost">$0</span>
-                </div>
-
-                <strong id="finalPrizeName" class="goal-preview-name">Prize</strong>
-
-            </div>
-
             <p id="finishSummary" class="results-message"></p>
+
+            <p id="sortBreakdown" class="needs-wants-breakdown"></p>
 
             <button
                 id="playAgainButton"

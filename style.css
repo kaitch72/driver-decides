@@ -33,9 +33,8 @@ body {
     font-family: var(--font-brand);
 }
 
-/* Kiosk frame (2026-08-27): the game no longer fills the raw viewport -
-   it sits as a rounded 16:9 card on a neutral grey page, matching the
-   other three games' template. */
+/* Kiosk frame: the game sits as a rounded 16:9 card on a neutral grey
+   page, matching the other three games' template. */
 body {
     background: #E4E6E8;
     display: flex;
@@ -67,10 +66,6 @@ body {
     top: 0;
     left: 0;
     right: 0;
-    /* Always exactly 1/12 of #game's own height (not the viewport) - #game
-       is the positioned ancestor and has a real computed height via its
-       16:9 aspect-ratio, so a percentage here scales with it automatically
-       at any kiosk/browser size instead of needing breakpoint overrides. */
     height: calc(100% / 12);
 
     background: var(--white);
@@ -83,9 +78,6 @@ body {
     padding: 0 20px;
 }
 
-/* Empty now that the logo has been removed (2026-08-28) - kept as a grid
-   spacer so #gameTitle still lands in the centered "auto" column instead
-   of sliding left to balance the reset button on the right. */
 #topBarLeft {
     justify-self: start;
 }
@@ -127,344 +119,275 @@ body {
 }
 
 
-/* ================= WORLD ================= */
+/* ================= ROAD SCENE =================
+   Rebuilt for the needs-vs-wants SORTING rework (2026-09-10). The old
+   flat CSS sky/grass/road strips + tree icons are gone entirely, replaced
+   by Kayla's single illustrated background (a real road-perspective scene
+   with a vanishing point and a dashed center line splitting it into two
+   lanes - images/Background.svg, 1920x1080, same ratio as #game so it
+   covers with zero letterboxing at any kiosk size). */
 
-#sky {
+#roadScene {
     position: absolute;
-    inset: 0 0 58% 0;
-    background: var(--sky-blue);
-}
-
-/* Off-brand hex, kept on purpose (2026-08-27) - Kayla likes this green
-   even though it isn't one of the Securityplus tokens. */
-#grass {
-    position: absolute;
-    left: 0;
-    right: 0;
-    top: 34%;
-    bottom: 0;
-    background: #a9dba0;
-}
-
-/* Plain now (2026-08-27) - the Persian Blue outline and the Malibu
-   center dashes are both gone; just the flat Blue Black brand color. */
-#road {
-    position: absolute;
-    left: 0;
-    right: 0;
-    top: 43%;
-    height: 36%;
-    background: var(--blue-black);
-}
-
-
-/* ================= TREES ================= */
-
-.tree {
-    position: absolute;
-    z-index: 4;
-}
-
-/* Two real brand icons (Kayla's exports, 2026-08-27) replace the old 🌳
-   emoji - single-color Persian Blue, sized by height so both the single
-   pine and the pine-cluster variant read at the same scale the emoji did. */
-.tree-icon {
-    display: block;
-    height: clamp(28px, 4vw, 65px);
-    width: auto;
-    fill: var(--persian-blue);
-}
-
-.tree-icon--cluster {
-    height: clamp(24px, 3.4vw, 56px);
-}
-
-.tree1 {
-    left: 8%;
-    top: 35%;
-}
-
-.tree2 {
-    left: 29%;
-    top: 36%;
-}
-
-.tree3 {
-    left: 56%;
-    top: 35%;
-}
-
-.tree4 {
-    left: 77%;
-    top: 36%;
-}
-
-.tree5 {
-    right: 4%;
-    top: 35%;
-}
-
-
-/* ================= HUD ================= */
-
-#hud {
-    position: absolute;
-    z-index: 30;
-    top: calc(100% / 12 + 14px);
-    left: 12px;
-    right: 12px;
-
-    display: flex;
-    align-items: stretch;
-    gap: 14px;
-}
-
-.moneyBox,
-#itemsBox,
-#goalBox {
-    background: var(--white);
-    border-radius: 16px;
-    padding: 12px 18px;
-    box-shadow: 0 5px 10px rgba(10, 23, 36, 0.14);
-    font-weight: bold;
-
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-}
-
-.statLabel {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: clamp(12px, 1vw, 15px);
-    font-weight: 700;
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
-    color: var(--persian-blue);
-}
-
-.icon-slot {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.1em;
-    line-height: 1;
-}
-
-.mini-icon {
-    width: 16px;
-    height: 16px;
-    fill: var(--persian-blue);
-    flex-shrink: 0;
-}
-
-.statValue {
-    display: block;
-    margin-top: 5px;
-    font-size: clamp(20px, 2vw, 32px);
-    color: var(--blue-black);
-}
-
-.moneyBox {
-    min-width: 130px;
-}
-
-#itemsBox {
-    min-width: 240px;
-    /* Bounded now that repeat catches group into one badged slot instead
-       of one icon each (2026-08-28) - caps at the 7 distinct spend
-       flavors, so this no longer needs to grow open-ended. */
-    max-width: 320px;
-}
-
-#items {
-    margin-top: 5px;
-    min-height: 40px;
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 4px;
-    font-size: clamp(25px, 2.5vw, 40px);
-}
-
-/* One icon slot per distinct flavor caught, with a small count badge for
-   repeats - replaces the old one-icon-per-catch list so this HUD box
-   stops growing every time the same treat gets caught again. */
-.hud-item-slot {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 42px;
-    height: 42px;
-    font-size: 28px;
-    flex-shrink: 0;
-}
-
-.hud-item-count {
-    position: absolute;
-    right: -6px;
-    bottom: -4px;
-
-    min-width: 20px;
-    height: 20px;
-    padding: 0 5px;
-
-    display: flex;
-    align-items: center;
-    justify-content: center;
-
-    border-radius: 999px;
-    border: 2px solid var(--white);
-    background: var(--persian-blue);
-    box-shadow: 0 2px 4px rgba(10, 23, 36, 0.2);
-
-    font-family: var(--font-brand);
-    font-size: 11px;
-    font-weight: 800;
-    color: var(--white);
-    line-height: 1;
-    white-space: nowrap;
-}
-
-#goalBox {
-    margin-left: auto;
-    width: min(30vw, 450px);
-    min-width: 260px;
-    background: var(--white);
-}
-
-#goalTitle {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: clamp(12px, 1vw, 15px);
-    font-weight: 700;
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
-    color: var(--persian-blue);
-    margin-bottom: 8px;
-}
-
-#goalTitle strong {
-    text-transform: none;
-    letter-spacing: 0;
-    color: var(--blue-black);
-    font-size: clamp(14px, 1.3vw, 19px);
-}
-
-#progressTrack {
-    width: 100%;
-    height: 18px;
-    background: var(--hawkes-blue);
-    border-radius: 20px;
+    inset: 0;
+    z-index: 1;
     overflow: hidden;
 }
 
-#goalProgressFill {
-    width: 0%;
-    height: 100%;
-    background: linear-gradient(90deg, var(--persian-blue), var(--blue-bird));
-    border-radius: 20px;
-    transition: width 0.4s ease;
-}
-
-#goalProgressText {
-    text-align: center;
-    margin-top: 5px;
-    font-weight: bold;
-    font-size: clamp(13px, 1.2vw, 18px);
-    color: var(--blue-black);
-}
-
-
-/* ================= OBSTACLES (save / spend icons) ================= */
-
-#obstacles {
+.bg-image {
     position: absolute;
     inset: 0;
-    z-index: 12;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    user-select: none;
+    -webkit-user-drag: none;
+}
+
+
+/* ================= SKY (decorative sun + clouds) =================
+   A sun that pulses gently in the top right corner, and two clouds that
+   drift left-to-right on their own independent, looping timers. Each
+   cloud's whole trip (off the left edge to off the right edge) is driven
+   by a single `left` keyframe animation; a negative animation-delay just
+   starts it partway through that trip on load, instead of leaving the sky
+   empty until the first one drifts into view. */
+
+#skyLayer {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
     pointer-events: none;
     overflow: hidden;
 }
 
-.obstacle {
+.sunDecor {
     position: absolute;
-    transform: translate(-50%, -50%);
+    top: 11%;
+    right: 6%;
+    width: 6%;
+    height: auto;
+    animation: sunPulse 3.4s ease-in-out infinite;
+    transform-origin: 50% 50%;
+}
 
-    width: clamp(52px, 5.5vw, 78px);
-    height: clamp(52px, 5.5vw, 78px);
+@keyframes sunPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+}
 
-    border-radius: 50%;
-    background: var(--white);
+.cloudDecor {
+    position: absolute;
+    height: auto;
+    animation-name: cloudDrift;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+}
+
+@keyframes cloudDrift {
+    0% { left: -25%; }
+    100% { left: 110%; }
+}
+
+
+/* ================= TREES (decorative, along the grass) =================
+   A handful of Kayla's tree graphic, planted at three depths per side to
+   match the road's perspective, each swaying gently as if in a breeze.
+   Each .treeSpot anchors the BASE of the trunk to a fixed point (that's
+   what the translate(-50%,-100%) is for); the sway rotation lives on the
+   inner <img> instead, with its transform-origin pinned near the trunk
+   base, so the whole tree rocks from its roots rather than drifting off
+   its spot. Slightly different animation-duration/delay per tree (set
+   inline in the markup) keeps them from all swaying in lockstep. */
+
+#treeLayer {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+}
+
+.treeSpot {
+    position: absolute;
+    transform: translate(-50%, -100%);
+    user-select: none;
+}
+
+.treeDecor {
+    display: block;
+    width: 100%;
+    height: auto;
+    -webkit-user-drag: none;
+    transform-origin: 50% 94%;
+    animation-name: treeSway;
+    animation-timing-function: ease-in-out;
+    animation-iteration-count: infinite;
+}
+
+@keyframes treeSway {
+    0%, 100% { transform: rotate(-3deg); }
+    50% { transform: rotate(3deg); }
+}
+
+
+/* ================= NEED/WANT ROAD SIGNS =================
+   NEED and WANT travel down the road together, side by side, once per
+   item (2026-09-10 travel rework) - not a continuous decorative loop.
+   Position/scale are driven entirely by JS each frame (positionRoadSign in
+   game.js), starting small and close to center near the horizon (where
+   the road art itself is narrow) and ending full-size over their own lane
+   right at the scooter - so the words always sit on the road, never out
+   over the grass. The `left`/`top` here are just a sane default before
+   the first frame runs; `opacity` toggles them on/off between items. */
+
+#roadSignsLayer {
+    position: absolute;
+    inset: 0;
+    z-index: 15;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+.roadSign {
+    position: absolute;
+    top: 26%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.4);
+    opacity: 0;
+    will-change: top, left, transform;
 
     display: flex;
     align-items: center;
     justify-content: center;
+    min-width: 118px;
 
-    box-shadow: 0 5px 10px rgba(10, 23, 36, 0.22);
-    transition: opacity 0.2s ease, transform 0.2s ease;
-}
-
-/* Two-tone brand-blue borders (2026-08-26, color-differentiation pass) -
-   Kayla wanted the obstacles told apart by color again after the neutral
-   single-blue pass, but without going back to a green/red good-vs-bad code:
-   save gets the bright/primary blue, spend gets a lighter blue. Same two
-   tones carry through to the price tag and catch toast below so the
-   save/spend distinction reads consistently everywhere. */
-.obstacle--save {
-    border: 4px solid var(--persian-blue);
-}
-
-.obstacle--spend {
-    border: 4px solid var(--sky-blue);
-}
-
-.obstacle-icon {
-    width: 58%;
-    height: 58%;
-    fill: var(--persian-blue);
-}
-
-/* Price tag shown on every obstacle as it travels (2026-08-26, pricing
-   pass) - save is always a fixed amount, spend varies per item, so a kid
-   can see the cost before deciding whether to steer into it. A +/- prefix
-   (added in the color-differentiation pass) matches the catch toast's
-   wording so the sign reads the same everywhere. Background matches each
-   type's border color; text color flips to Blue Black on the lighter spend
-   tag since white doesn't have enough contrast on Sky Blue. */
-.obstacle-price {
-    position: absolute;
-    bottom: -8px;
-    left: 50%;
-    transform: translateX(-50%);
+    padding: 14px 22px;
+    border-radius: 18px;
+    border: 5px solid var(--white);
+    box-shadow: 0 8px 16px rgba(10, 23, 36, 0.25);
 
     font-family: var(--font-brand);
     font-weight: 800;
-    font-size: clamp(11px, 1.1vw, 14px);
-    line-height: 1;
+    font-size: clamp(16px, 2.1vw, 28px);
+    letter-spacing: 0.5px;
+    text-align: center;
     white-space: nowrap;
-
-    padding: 3px 7px;
-    border-radius: 999px;
-    border: 2px solid var(--white);
-    box-shadow: 0 2px 4px rgba(10, 23, 36, 0.25);
 }
 
-.obstacle--save .obstacle-price {
-    background: var(--persian-blue);
+.roadSign--need {
+    background: var(--blue-bird);
     color: var(--white);
 }
 
-.obstacle--spend .obstacle-price {
+.roadSign--want {
     background: var(--sky-blue);
     color: var(--blue-black);
 }
 
-.obstacle--caught {
-    opacity: 0;
-    transform: translate(-50%, -50%) scale(1.4);
+
+/* ================= LANE TAP ZONES =================
+   Invisible full-height hit targets - a fallback so a kid can tap a side
+   instead of dragging the scooter there. */
+
+.laneZone {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 50%;
+    z-index: 10;
+    cursor: pointer;
+}
+
+.laneZone--need {
+    left: 0;
+}
+
+.laneZone--want {
+    left: 50%;
+}
+
+
+/* ================= ITEM POPUP (the actual question) =================
+   A single word for whatever's being sorted right now - fixed in place
+   at top center, never travels down the road. Swapping to a new item
+   gives it a quick pop; a correct/incorrect answer flashes it briefly. */
+
+.itemPopup {
+    position: absolute;
+    top: 32%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(1);
+    z-index: 25;
+
+    min-height: 1em;
+    background: var(--white);
+    border: 6px solid var(--persian-blue);
+    border-radius: 22px;
+    padding: 16px 38px;
+
+    font-family: var(--font-brand);
+    font-weight: 800;
+    font-size: clamp(22px, 3.2vw, 42px);
+    color: var(--blue-black);
+    text-align: center;
+    white-space: nowrap;
+
+    box-shadow: 0 10px 22px rgba(10, 23, 36, 0.3);
+    pointer-events: none;
+}
+
+.itemPopup.pop {
+    animation: itemPopupPop 0.35s ease;
+}
+
+@keyframes itemPopupPop {
+    0% { transform: translate(-50%, -50%) scale(0.6); opacity: 0; }
+    60% { transform: translate(-50%, -50%) scale(1.08); opacity: 1; }
+    100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+}
+
+.itemPopup--correct {
+    animation: itemPopupCorrect 0.5s ease;
+}
+
+@keyframes itemPopupCorrect {
+    0% { transform: translate(-50%, -50%) scale(1); border-color: var(--persian-blue); }
+    40% { transform: translate(-50%, -50%) scale(1.15); border-color: var(--blue-bird); }
+    100% { transform: translate(-50%, -50%) scale(1); border-color: var(--persian-blue); }
+}
+
+.itemPopup--wrong {
+    animation: itemPopupWrong 0.5s ease;
+}
+
+@keyframes itemPopupWrong {
+    0% { transform: translate(-50%, -50%) translateX(0); }
+    25% { transform: translate(-50%, -50%) translateX(-10px); }
+    50% { transform: translate(-50%, -50%) translateX(10px); }
+    75% { transform: translate(-50%, -50%) translateX(-6px); }
+    100% { transform: translate(-50%, -50%) translateX(0); }
+}
+
+.itemPopup--miss {
+    animation: itemPopupMiss 0.5s ease;
+}
+
+@keyframes itemPopupMiss {
+    0% { transform: translate(-50%, -50%) scale(1); border-color: var(--sky-blue); opacity: 1; }
+    50% { transform: translate(-50%, -50%) scale(0.92); border-color: var(--mystic); opacity: 0.7; }
+    100% { transform: translate(-50%, -50%) scale(1); border-color: var(--sky-blue); opacity: 1; }
+}
+
+
+/* ================= FEEDBACK (toasts + sparkles) ================= */
+
+#feedbackLayer {
+    position: absolute;
+    inset: 0;
+    z-index: 16;
+    pointer-events: none;
+    overflow: hidden;
 }
 
 .sparkle {
@@ -503,33 +426,38 @@ body {
 
 .catchToast {
     position: absolute;
-    z-index: 20;
+    z-index: 22;
     transform: translate(-50%, -50%);
     pointer-events: none;
 
     font-family: var(--font-brand);
     font-weight: 800;
-    font-size: clamp(16px, 1.8vw, 24px);
+    font-size: clamp(18px, 2vw, 27px);
+    text-align: center;
     white-space: nowrap;
 
-    animation: floatUpFade 0.9s ease forwards;
+    padding: 8px 18px;
+    border-radius: 999px;
+    box-shadow: 0 4px 10px rgba(10, 23, 36, 0.25);
+
+    animation: floatUpFade 1.1s ease forwards;
 }
 
-/* Brand blues (2026-08-26) - was green/red, which read as "saving = good,
-   spending = bad." These toasts float over the dark road (#road is
-   var(--blue-black)), so per the dark-surface icon rule under Iconography,
-   the on-light Persian Blue/Sky Blue pair from the obstacle border swaps to
-   its dark-surface equivalent here: Malibu stands in for Persian Blue
-   (both read as the "bright/save" tone) and Sky Blue carries over as-is,
-   since it already has strong contrast against the dark road. Plain
-   Persian Blue text measured only ~2.5:1 contrast against the road color -
-   too low to read reliably at a glance. */
-.toast--save {
-    color: var(--malibu);
+.toast--correct {
+    background: var(--persian-blue);
+    color: var(--white);
 }
 
-.toast--spend {
-    color: var(--sky-blue);
+.toast--miss {
+    background: var(--mystic);
+    color: var(--blue-black);
+    border: 3px solid var(--onahau);
+}
+
+.toast--wrong {
+    background: var(--white);
+    color: var(--blue-black);
+    border: 3px solid var(--sky-blue);
 }
 
 @keyframes floatUpFade {
@@ -539,72 +467,101 @@ body {
     }
     100% {
         opacity: 0;
-        transform: translate(-50%, -170%);
+        transform: translate(-50%, -220%);
     }
 }
 
 
-/* ================= SCOOTER ================= */
+/* ================= SCOOTER =================
+   Kayla's real illustrated scooter graphic (images/scooter.svg). Now
+   drag-steered directly by the player (2026-09-10 drag rework) - JS moves
+   it in real time via Pointer Events, so no default transition (that would
+   fight the 1:1 drag feel); a `.snap` class adds one back only for the
+   programmatic jump when a lane is tapped instead of dragged. */
 
 #scooter {
     position: absolute;
-    z-index: 15;
-
-    left: 75%;
-    top: 61%;
-
-    transform: translate(-50%, -50%);
-
-    width: clamp(60px, 6vw, 92px);
-    height: clamp(60px, 6vw, 92px);
-
-    border-radius: 50%;
-    background: var(--white);
-    border: 4px solid var(--persian-blue);
-    box-shadow: 0 6px 0 var(--hawkes-blue), 0 8px 14px rgba(10, 23, 36, 0.2);
-
-    display: flex;
-    align-items: center;
-    justify-content: center;
-
-    cursor: grab;
-    user-select: none;
+    z-index: 18;
+    bottom: 5%;
+    left: 50%;
+    transform: translateX(-50%);
     touch-action: none;
+    cursor: grab;
 }
 
-.scooter-icon {
-    width: 58%;
-    height: 58%;
-    fill: var(--persian-blue);
-    pointer-events: none;
-}
-
-#scooter:active {
+#scooter.dragging {
     cursor: grabbing;
 }
 
+#scooter.snap {
+    transition: left 0.32s cubic-bezier(.34,1.4,.64,1);
+}
 
-/* ================= INSTRUCTIONS ================= */
+.scooter-img {
+    display: block;
+    width: clamp(80px, 9vw, 150px);
+    height: auto;
+    filter: drop-shadow(0 10px 12px rgba(10, 23, 36, 0.35));
+    user-select: none;
+    -webkit-user-drag: none;
+    pointer-events: none;
+}
 
-#instructions {
+
+
+/* ================= HUD ================= */
+
+#hud {
     position: absolute;
-    z-index: 25;
+    z-index: 30;
+    top: calc(100% / 12 + 14px);
+    left: 12px;
+    right: 12px;
 
-    left: 50%;
-    bottom: 20px;
-    transform: translateX(-50%);
+    display: flex;
+    align-items: stretch;
+    gap: 14px;
+}
 
+.starsBox {
     background: var(--white);
-    border-radius: 30px;
-    padding: 13px 28px;
+    border-radius: 16px;
+    padding: 12px 18px;
+    box-shadow: 0 5px 10px rgba(10, 23, 36, 0.14);
+    font-weight: bold;
 
-    font-size: clamp(15px, 1.6vw, 25px);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.statLabel {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: clamp(12px, 1vw, 15px);
     font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: var(--persian-blue);
+}
+
+.mini-icon {
+    width: 16px;
+    height: 16px;
+    fill: var(--persian-blue);
+    flex-shrink: 0;
+}
+
+.statValue {
+    display: block;
+    margin-top: 5px;
+    font-size: clamp(20px, 2vw, 32px);
     color: var(--blue-black);
+}
 
-    box-shadow: 0 5px 12px rgba(10, 23, 36, 0.18);
-
-    white-space: nowrap;
+.starsBox {
+    min-width: 130px;
 }
 
 
@@ -622,9 +579,6 @@ body {
     justify-content: center;
 }
 
-/* A slight scrim over the game screen (road, HUD, scooter all still
-   visible underneath, just dimmed) rather than a solid takeover - the
-   popup card is the point, not a second background. Matches Coin Catch. */
 #startScreen {
     display: flex;
     background: rgba(10, 23, 36, 0.35);
@@ -681,7 +635,12 @@ body {
 }
 
 
-/* ================= START BADGE (animated icon sticker) ================= */
+/* ================= START BADGE (animated icon sticker) =================
+   The scooter is a full-color illustration now, not a flat brand-blue
+   icon, so it can't use the recolor-white-inside-a-gradient-circle
+   treatment the other games' badges use (that would erase its colors).
+   --photo variants keep the same float/sparkle motion but show the
+   artwork on a plain white disc instead. */
 
 .start-badge-wrap {
     position: relative;
@@ -693,6 +652,11 @@ body {
     margin: 0 auto clamp(18px, 2.2vw, 26px);
 
     animation: startBadgeFloat 3.2s ease-in-out infinite;
+}
+
+.start-badge-wrap--photo {
+    width: clamp(96px, 11vw, 140px);
+    height: clamp(96px, 11vw, 140px);
 }
 
 .start-badge {
@@ -710,10 +674,22 @@ body {
     box-shadow: 0 12px 22px rgba(25, 67, 220, 0.35);
 }
 
+.start-badge--photo {
+    background: var(--white);
+    border: 4px solid var(--hawkes-blue);
+    padding: 10px;
+}
+
 .start-badge-icon {
     width: 52%;
     height: 52%;
     fill: var(--white);
+}
+
+.start-badge-photo {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
 }
 
 @keyframes startBadgeFloat {
@@ -816,18 +792,6 @@ body {
     flex-shrink: 0;
 }
 
-
-.finishCard h2 {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    font-size: clamp(21px, 2.3vw, 30px);
-    font-weight: 800;
-    color: var(--white);
-    margin-top: 30px;
-}
-
 .startCard p {
     font-size: clamp(14px, 1.3vw, 16px);
     font-weight: 400;
@@ -840,6 +804,14 @@ body {
     font-weight: 500;
     color: var(--hawkes-blue);
     line-height: 1.35;
+}
+
+.needs-wants-breakdown {
+    margin-top: 14px;
+    font-size: clamp(13px, 1.3vw, 17px);
+    font-weight: 600;
+    color: var(--sky-blue);
+    line-height: 1.4;
 }
 
 .introLead {
@@ -867,13 +839,6 @@ body {
 .sparkle-icon--big {
     width: 26px;
     height: 26px;
-}
-
-.sparkle-icon--inline {
-    width: 15px;
-    height: 15px;
-    fill: var(--malibu);
-    vertical-align: -2px;
 }
 
 
@@ -950,77 +915,6 @@ body {
 }
 
 
-/* ================= FINISH ================= */
-
-.goal-preview {
-    margin: 28px 0 34px;
-}
-
-.goal-preview-row {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-}
-
-.goal-preview-icon-wrap {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-/* Icon + cost are the secondary line now - sized and colored down (Sky
-   Blue, like round-label) so the goal NAME below reads as the one big
-   headline instead of the two lines competing at the same weight. */
-.goal-preview-icon {
-    width: 26px;
-    height: 26px;
-    fill: var(--sky-blue);
-    flex-shrink: 0;
-}
-
-.goal-preview-cost {
-    font-size: clamp(18px, 2vw, 24px);
-    font-weight: 700;
-    color: var(--sky-blue);
-}
-
-.goal-preview-name {
-    display: block;
-    font-size: clamp(34px, 4.6vw, 58px);
-    font-weight: 800;
-    color: var(--white);
-    margin-top: 8px;
-}
-
-.results-footer {
-    margin-top: 22px;
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.4px;
-    color: var(--sky-blue);
-}
-
-/* Small-scale version of a spend flavor's icon (teddy bear, candy, etc.) for
-   the HUD Items row - sized off the containing font-size (1em) rather than
-   the on-road obstacle sizing. */
-.flavor-icon-wrap {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 1em;
-    height: 1em;
-    vertical-align: middle;
-    flex-shrink: 0;
-}
-
-.flavor-list-icon {
-    width: 100%;
-    height: 100%;
-    fill: var(--persian-blue);
-}
-
-
 /* ================= RESPONSIVE ================= */
 
 @media (max-width: 900px) {
@@ -1035,28 +929,23 @@ body {
         gap: 7px;
     }
 
-    .moneyBox,
-    #itemsBox,
-    #goalBox {
+    .starsBox {
         padding: 8px 10px;
         border-radius: 10px;
-    }
-
-    .moneyBox {
         min-width: 90px;
-    }
-
-    #itemsBox {
-        min-width: 120px;
-    }
-
-    #goalBox {
-        min-width: 180px;
     }
 
     .startCard,
     .finishCard {
         padding: 25px;
+    }
+
+    .itemPopup {
+        padding: 10px 22px;
+    }
+
+    .roadSign {
+        padding: 10px 16px;
     }
 }
 
@@ -1066,18 +955,18 @@ body {
         display: none;
     }
 
-    #goalChoices {
-        grid-template-columns: 1fr;
-    }
-
     .startCard,
     .finishCard {
         width: 94vw;
     }
 
-    #instructions {
-        white-space: normal;
-        width: 90%;
-        text-align: center;
+    .roadSign {
+        font-size: 14px;
+        padding: 6px 14px;
+    }
+
+    .itemPopup {
+        font-size: 18px;
+        padding: 8px 18px;
     }
 }
