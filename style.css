@@ -736,7 +736,7 @@ body {
     position: relative;
     overflow: hidden;
 
-    width: min(900px, 90vw);
+    width: min(640px, 88vw);
     max-height: 94vh;
     overflow-y: auto;
 
@@ -800,18 +800,43 @@ body {
 }
 
 .results-message {
+    margin: 0 0 4px;
     font-size: clamp(17px, 1.8vw, 24px);
     font-weight: 500;
     color: var(--hawkes-blue);
     line-height: 1.35;
 }
 
-.needs-wants-breakdown {
-    margin-top: 14px;
-    font-size: clamp(13px, 1.3vw, 17px);
-    font-weight: 600;
+.stat-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    gap: clamp(28px, 5.5vw, 56px);
+    margin-top: 2px;
+    margin-bottom: 26px;
+}
+
+.stat-block {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.stat-number {
+    font-size: clamp(38px, 5.2vw, 60px);
+    font-weight: 800;
     color: var(--sky-blue);
-    line-height: 1.4;
+    line-height: 1;
+    letter-spacing: -0.01em;
+}
+
+.stat-label {
+    margin-top: 4px;
+    font-size: clamp(12px, 1.2vw, 16px);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--hawkes-blue);
 }
 
 .introLead {
@@ -839,6 +864,40 @@ body {
 .sparkle-icon--big {
     width: 26px;
     height: 26px;
+}
+
+
+/* ================= FINISH BADGE (scooter icon, finish screen) =================
+   Same plain-white-disc treatment as the start screen's --photo badge
+   variant (the scooter art is full-color, so it can't be recolored into
+   a flat icon) - sized and placed to match the results-sparkles above it. */
+
+.finish-badge-wrap {
+    width: clamp(70px, 7.5vw, 96px);
+    height: clamp(70px, 7.5vw, 96px);
+    margin: 0 auto 14px;
+}
+
+.finish-badge {
+    width: 100%;
+    height: 100%;
+
+    border-radius: 50%;
+
+    background: var(--white);
+    border: 4px solid var(--hawkes-blue);
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    box-shadow: 0 12px 22px rgba(0, 0, 0, 0.25);
+}
+
+.finish-badge-icon {
+    width: 54%;
+    height: 54%;
+    fill: var(--persian-blue);
 }
 
 

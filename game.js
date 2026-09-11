@@ -32,7 +32,7 @@ const SIGN_TRAVEL_MS = 4800;
 // Pause after one item resolves before the next word + signs appear.
 const GAP_BEFORE_NEXT_MS = 900;
 
-// Safety net only - normally a round ends by hitting its star target.
+// Safety net only - normally a round ends after all its items have been shown.
 const MAX_ITEMS_SAFETY = 40;
 
 // NEED and WANT both travel down together, side by side, once per item -
@@ -120,17 +120,46 @@ let roadSignAnimFrame = null;  // rAF handle for the current NEED/WANT travel
 let roadSignStartTime = null;
 
 
-/* ================= LEVELS =================
-   Three rounds, each needing more correct sorts.
-   Same items and rules every round - only the
-   target gets harder to reach.
+/* ================= ROUNDS =================
+   Four rounds of 6 items each. All 24 items (12 needs + 12 wants) are
+   shuffled together into one deck and dealt out 6-per-round at the start
+   of every game, so no item repeats anywhere in the game and each round
+   is a random, unpredictable mix of needs and wants (not forced 3/3).
 =========================================== */
 
-const LEVELS = [
-    { target: 6 },
-    { target: 9 },
-    { target: 12 }
-];
+const ROUND_COUNT = 4;
+const ITEMS_PER_ROUND = 6;
+
+// Fisher-Yates - returns a new shuffled array, doesn't mutate the input.
+function shuffle(array) {
+
+    const result = array.slice();
+
+    for (let i = result.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [result[i], result[j]] = [result[j], result[i]];
+    }
+
+    return result;
+}
+
+// Built fresh every time a new game starts (Start button) - ROUND_COUNT
+// arrays of ITEMS_PER_ROUND items each, drawn without repeats from the
+// full combined need+want deck. Reused as-is across a retry or round
+// advance within the same game so items already shown never come back.
+let gameRounds = [];
+let roundItemIndex = 0;
+
+function buildGameRounds() {
+
+    const deck = shuffle(NEED_ITEMS.concat(WANT_ITEMS));
+
+    gameRounds = [];
+
+    for (let i = 0; i < ROUND_COUNT; i++) {
+        gameRounds.push(deck.slice(i * ITEMS_PER_ROUND, (i + 1) * ITEMS_PER_ROUND));
+    }
+}
 
 let currentLevelIndex = 0;
 let levelResults = [];
@@ -143,21 +172,33 @@ let finishOutcome = null;  // "retry" | "advance" | "complete"
 =========================================== */
 
 const NEED_ITEMS = [
-    { name: "Bus Fare", category: "need" },
     { name: "School Supplies", category: "need" },
-    { name: "Groceries", category: "need" },
-    { name: "New Shoes", category: "need" }
+    { name: "Healthy Food", category: "need" },
+    { name: "Medicine", category: "need" },
+    { name: "Toothbrush", category: "need" },
+    { name: "Backpack", category: "need" },
+    { name: "Glasses", category: "need" },
+    { name: "Soap", category: "need" },
+    { name: "Bike Helmet", category: "need" },
+    { name: "Dentist Visit", category: "need" },
+    { name: "Winter Jacket", category: "need" },
+    { name: "Water", category: "need" },
+    { name: "Groceries", category: "need" }
 ];
 
 const WANT_ITEMS = [
     { name: "Candy", category: "want" },
-    { name: "Rubber Duck", category: "want" },
-    { name: "Puzzle", category: "want" },
-    { name: "Kite", category: "want" },
+    { name: "Video Games", category: "want" },
     { name: "Fast Food", category: "want" },
-    { name: "Teddy Bear", category: "want" },
-    { name: "Video Game", category: "want" },
-    { name: "Toy Gift", category: "want" }
+    { name: "Trading Cards", category: "want" },
+    { name: "Movie Tickets", category: "want" },
+    { name: "Soda", category: "want" },
+    { name: "Stickers", category: "want" },
+    { name: "Comic Book", category: "want" },
+    { name: "Ice Cream", category: "want" },
+    { name: "Fidget Toy", category: "want" },
+    { name: "Theme Park Ticket", category: "want" },
+    { name: "New Phone Case", category: "want" }
 ];
 
 // Same tone-cycling sparkle burst used for catches in Coin Catch and
@@ -417,12 +458,14 @@ function hideSigns() {
 
 /* ================= QUESTIONS (item popup) ================= */
 
-function pickRandomItem() {
+function pickNextItem() {
 
-    const category = Math.random() < 0.5 ? "need" : "want";
-    const pool = category === "need" ? NEED_ITEMS : WANT_ITEMS;
+    const pool = gameRounds[currentLevelIndex] || [];
+    const item = pool[roundItemIndex] || null;
 
-    return pool[Math.floor(Math.random() * pool.length)];
+    roundItemIndex++;
+
+    return item;
 }
 
 function showNextItem() {
@@ -436,7 +479,12 @@ function showNextItem() {
         return;
     }
 
-    currentItem = pickRandomItem();
+    currentItem = pickNextItem();
+
+    if (!currentItem) {
+        finishGame();
+        return;
+    }
 
     if (itemPopup) {
         itemPopup.textContent = currentItem.name;
@@ -598,9 +646,7 @@ function checkRideEnd() {
         return;
     }
 
-    const selectedGoal = LEVELS[currentLevelIndex];
-
-    if (selectedGoal && correctCount >= selectedGoal.target) {
+    if (roundItemIndex >= ITEMS_PER_ROUND) {
         finishGame();
     }
 }
@@ -617,9 +663,8 @@ function finishGame() {
     gameRunning = false;
     stopItemLoop();
 
-    const selectedGoal = LEVELS[currentLevelIndex];
-    const reachedGoal = selectedGoal && correctCount >= selectedGoal.target;
-    const isLastLevel = currentLevelIndex === LEVELS.length - 1;
+    const reachedGoal = roundItemIndex >= ITEMS_PER_ROUND;
+    const isLastLevel = currentLevelIndex === ROUND_COUNT - 1;
 
     if (reachedGoal) {
         levelResults[currentLevelIndex] = true;
@@ -641,7 +686,7 @@ function finishGame() {
 
     if (roundLabel) {
         roundLabel.textContent =
-            `Round ${currentLevelIndex + 1} of ${LEVELS.length}`;
+            `Round ${currentLevelIndex + 1} of ${ROUND_COUNT}`;
     }
 
     const finishTitleText = document.getElementById("finishTitleText");
@@ -653,31 +698,25 @@ function finishGame() {
 
     const finishSummary = document.getElementById("finishSummary");
 
-    // Needs-vs-wants sorting recap - the one stat worth carrying past the
-    // round: how many were sorted right vs. mixed up.
-    const breakdownEl = document.getElementById("sortBreakdown");
+    // Needs-vs-wants sorting recap - two side-by-side stat tiles (big
+    // number, small label underneath): how many sorted right, and how
+    // many didn't (mixed up + missed combined into one "missed" count).
+    const statCorrectNumber = document.getElementById("statCorrectNumber");
+    const statMissedNumber = document.getElementById("statMissedNumber");
 
-    if (breakdownEl) {
-        if (wrongCount === 0 && missCount === 0 && correctCount > 0) {
-            breakdownEl.textContent =
-                `Sorted all ${correctCount} correctly - great job telling needs from wants!`;
-        } else if (missCount === 0) {
-            breakdownEl.textContent =
-                `${correctCount} sorted correctly, ${wrongCount} mixed up`;
-        } else if (wrongCount === 0) {
-            breakdownEl.textContent =
-                `${correctCount} sorted correctly, ${missCount} missed`;
-        } else {
-            breakdownEl.textContent =
-                `${correctCount} sorted correctly, ${wrongCount} mixed up, ${missCount} missed`;
-        }
+    if (statCorrectNumber) {
+        statCorrectNumber.textContent = correctCount;
+    }
+
+    if (statMissedNumber) {
+        statMissedNumber.textContent = wrongCount + missCount;
     }
 
     if (finishSummary) {
         finishSummary.style.display = "block";
         finishSummary.textContent =
             outcome === "complete"
-                ? `You completed all ${LEVELS.length} rounds!`
+                ? `You completed all ${ROUND_COUNT} rounds!`
                 : "";
     }
 
@@ -773,6 +812,7 @@ function resetGame() {
 
     currentLevelIndex = 0;
     levelResults = [];
+    roundItemIndex = 0;
 
     setScooterX(50);
     updateStars();
@@ -811,6 +851,7 @@ function beginRide() {
     wrongCount = 0;
     missCount = 0;
     totalSorted = 0;
+    roundItemIndex = 0;
 
     setScooterX(50);
     updateStars();
@@ -832,6 +873,9 @@ function startNextRound() {
 
 if (startButton) {
     startButton.addEventListener("click", function () {
+        buildGameRounds();
+        currentLevelIndex = 0;
+        levelResults = [];
         beginRide();
     });
 }
