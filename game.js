@@ -21,13 +21,31 @@
    themselves should be the moving/rolling part of the road rather than a
    fixed label - and the "my prize goal" progress bar should go away in
    favor of just watching the star count go up.
+
+   DIFFICULTY BUMP (2026-09-16): which physical side (left/right) NEED and
+   WANT land on is now randomized fresh for every single item, instead of
+   NEED always being left and WANT always being right. This stops kids
+   from just memorizing "left = need" instead of actually reading the
+   word each time. See needIsOnLeftThisItem, re-rolled once per item in
+   showSignsForCurrentItem().
 ======================================== */
 
 /* ================= TUNING CONSTANTS ================= */
 
 // How long the NEED/WANT signs take to travel from the horizon down to the
 // scooter's row - this IS the decision window now (no separate timer).
-const SIGN_TRAVEL_MS = 4800;
+// Gets a little faster each round (2026-09-16 pacing pass) so the game
+// ramps up rather than staying one flat speed the whole way through.
+// Round 1 is deliberately a bit slower than the old flat 4800ms default,
+// to ease new players in before the pace ramps up; indexed by
+// currentLevelIndex (0-based), with the last value reused as a fallback
+// if ROUND_COUNT ever grows past this list.
+const ROUND_SIGN_TRAVEL_MS = [5400, 4800, 4200, 3600];
+
+function currentSignTravelMs() {
+    return ROUND_SIGN_TRAVEL_MS[currentLevelIndex]
+        ?? ROUND_SIGN_TRAVEL_MS[ROUND_SIGN_TRAVEL_MS.length - 1];
+}
 
 // Pause after one item resolves before the next word + signs appear.
 const GAP_BEFORE_NEXT_MS = 900;
@@ -71,16 +89,18 @@ function roadHalfWidthAt(y) {
 // sign's own box width never pokes past the grass line even at full size.
 const SIGN_LANE_FRACTION = 0.5;
 
-function signLaneX(y, isNeed) {
+function signLaneX(y, isLeftSide) {
     const half = roadHalfWidthAt(y);
-    return isNeed ? 50 - SIGN_LANE_FRACTION * half : 50 + SIGN_LANE_FRACTION * half;
+    return isLeftSide ? 50 - SIGN_LANE_FRACTION * half : 50 + SIGN_LANE_FRACTION * half;
 }
 
-// Where each sign ends up once it reaches the scooter's row - used both to
-// draw the final frame and to know how close the scooter has to be parked
-// to actually "catch" it.
-const SIGN_X_COLLISION_NEED = signLaneX(SIGN_COLLISION_Y, true);
-const SIGN_X_COLLISION_WANT = signLaneX(SIGN_COLLISION_Y, false);
+// Where a sign ends up once it reaches the scooter's row, for each
+// physical side of the road - used both to draw the final frame and to
+// know how close the scooter has to be parked to actually "catch" it.
+// Purely geometric; which category (need/want) lands on which side is
+// rolled fresh per item, not fixed here (see needIsOnLeftThisItem).
+const SIGN_X_COLLISION_LEFT = signLaneX(SIGN_COLLISION_Y, true);
+const SIGN_X_COLLISION_RIGHT = signLaneX(SIGN_COLLISION_Y, false);
 
 // How close to a sign's final lane position the scooter has to be standing
 // when the signs arrive to actually "catch" that one. Anything in between -
@@ -116,8 +136,26 @@ let dragPointerId = null;
 let currentItem = null;        // the word currently on screen, or null
 let nextItemTimer = null;      // gap-before-next-question timeout
 
+// Which physical side NEED lands on for the item currently in play -
+// re-rolled fresh each item in showSignsForCurrentItem() (2026-09-16
+// randomized-lane difficulty bump). WANT always lands on the other side.
+let needIsOnLeftThisItem = true;
+
+// True only during the tutorial's one live practice catch (see the
+// TUTORIAL section near the bottom) - resolveItem() checks this and, when
+// true, skips all score/round bookkeeping so the practice item never
+// counts toward the real game.
+let isTutorialDemo = false;
+
 let roadSignAnimFrame = null;  // rAF handle for the current NEED/WANT travel
 let roadSignStartTime = null;
+
+// Normally 0 (travel starts its clock at "now"). The tutorial's live demo
+// catch (beginTutorialDemoCatch, in the TUTORIAL section) seeds this with
+// however much travel time had already elapsed before step 2's pause, so
+// resuming continues smoothly instead of restarting from the horizon.
+// Consumed (reset to 0) the first time animateRoadSigns reads it.
+let roadSignResumeOffsetMs = 0;
 
 
 /* ================= ROUNDS =================
@@ -228,8 +266,17 @@ const starsValueDisplay = document.getElementById("starsValue");
 
 const startScreen = document.getElementById("startScreen");
 const startButton = document.getElementById("startButton");
+const tutorialButton = document.getElementById("tutorialButton");
 
 const finishScreen = document.getElementById("finishScreen");
+
+const tutorialScreen = document.getElementById("tutorialScreen");
+const tutorialSpotlight = document.getElementById("tutorialSpotlight");
+const tutorialCard = document.getElementById("tutorialCard");
+const tutorialTitle = document.getElementById("tutorialTitle");
+const tutorialBody = document.getElementById("tutorialBody");
+const tutorialNextButton = document.getElementById("tutorialNextButton");
+const tutorialSkipButton = document.getElementById("tutorialSkipButton");
 
 
 /* ================= HELPERS ================= */
@@ -276,11 +323,13 @@ function getScooterChoice() {
     // that sign's lane by the time the signs arrive. Anything left hanging
     // around the middle never committed to a lane, so it's a miss - not a
     // coin-flip toward whichever half of the road it happens to be nearest.
-    if (Math.abs(scooterX - SIGN_X_COLLISION_NEED) <= CATCH_ZONE_HALF_WIDTH) {
-        return "need";
+    // Which category each physical side means is whatever was rolled for
+    // this item (needIsOnLeftThisItem) - not a fixed left=need/right=want.
+    if (Math.abs(scooterX - SIGN_X_COLLISION_LEFT) <= CATCH_ZONE_HALF_WIDTH) {
+        return needIsOnLeftThisItem ? "need" : "want";
     }
-    if (Math.abs(scooterX - SIGN_X_COLLISION_WANT) <= CATCH_ZONE_HALF_WIDTH) {
-        return "want";
+    if (Math.abs(scooterX - SIGN_X_COLLISION_RIGHT) <= CATCH_ZONE_HALF_WIDTH) {
+        return needIsOnLeftThisItem ? "want" : "need";
     }
     return null;
 }
@@ -353,7 +402,9 @@ document.querySelectorAll(".laneZone").forEach(function (zone) {
             return;
         }
 
-        const targetX = zone.dataset.lane === "need" ? 26 : 74;
+        // Purely physical left/right - which one is need vs. want this
+        // item is handled separately, in getScooterChoice().
+        const targetX = zone.dataset.lane === "left" ? 26 : 74;
 
         if (scooter) {
             scooter.classList.add("snap");
@@ -390,6 +441,11 @@ function updateStars() {
 
 function showSignsForCurrentItem() {
 
+    // Re-rolled fresh for every item (2026-09-16 randomized-lane
+    // difficulty bump) - left/right can't be memorized as always
+    // need/want, the player has to read the word each time.
+    needIsOnLeftThisItem = Math.random() < 0.5;
+
     if (roadSignNeed) {
         roadSignNeed.style.opacity = "1";
     }
@@ -409,14 +465,15 @@ function animateRoadSigns(timestamp) {
     }
 
     if (roadSignStartTime === null) {
-        roadSignStartTime = timestamp;
+        roadSignStartTime = timestamp - roadSignResumeOffsetMs;
+        roadSignResumeOffsetMs = 0;
     }
 
     const elapsed = timestamp - roadSignStartTime;
-    const progress = Math.min(1, elapsed / SIGN_TRAVEL_MS);
+    const progress = Math.min(1, elapsed / currentSignTravelMs());
 
-    positionRoadSign(roadSignNeed, progress, true);
-    positionRoadSign(roadSignWant, progress, false);
+    positionRoadSign(roadSignNeed, progress, needIsOnLeftThisItem);
+    positionRoadSign(roadSignWant, progress, !needIsOnLeftThisItem);
 
     if (progress >= 1) {
         resolveItem();
@@ -426,7 +483,7 @@ function animateRoadSigns(timestamp) {
     roadSignAnimFrame = requestAnimationFrame(animateRoadSigns);
 }
 
-function positionRoadSign(el, progress, isNeed) {
+function positionRoadSign(el, progress, isLeftSide) {
 
     if (!el) {
         return;
@@ -438,7 +495,7 @@ function positionRoadSign(el, progress, isNeed) {
     // rather than interpolated between two guessed endpoints, so the sign
     // rides the widening pavement instead of cutting a straight line that
     // can drift off it partway down.
-    const x = signLaneX(y, isNeed);
+    const x = signLaneX(y, isLeftSide);
     const scale = lerp(SIGN_SCALE_FAR, SIGN_SCALE_NEAR, eased);
 
     el.style.top = y + "%";
@@ -527,6 +584,14 @@ function resolveItem() {
 
     const chosenLane = getScooterChoice();
 
+    // The tutorial's one practice catch reuses this same function up to
+    // here (so dragging/catching feels identical), but branches off before
+    // any score or round-progress bookkeeping - see resolveTutorialDemoItem.
+    if (isTutorialDemo) {
+        resolveTutorialDemoItem(chosenLane);
+        return;
+    }
+
     totalSorted++;
 
     // The signs have arrived - hide them right away, they've been "caught"
@@ -579,6 +644,49 @@ function resolveItem() {
     if (gameRunning) {
         nextItemTimer = setTimeout(showNextItem, GAP_BEFORE_NEXT_MS);
     }
+}
+
+// Same catch feedback as a real item (toast + sparkle + item-popup flash),
+// but no star/correct/wrong/miss tally and no round progress - this is
+// just a practice swing. Once the feedback's had a moment to land, it
+// hands off straight to the real game (startRealGame), same as clicking
+// Start would.
+function resolveTutorialDemoItem(chosenLane) {
+
+    hideSigns();
+
+    if (chosenLane === null) {
+
+        spawnToast(
+            `That one got away - it was a ${currentItem.category}!`,
+            "toast--miss"
+        );
+        flashItemPopup("miss");
+
+    } else if (currentItem.category === chosenLane) {
+
+        spawnSparkles();
+        spawnToast(
+            `Yes! That's a ${currentItem.category}!`,
+            "toast--correct"
+        );
+        flashItemPopup("correct");
+
+    } else {
+
+        spawnToast(
+            `Actually, that's a ${currentItem.category}!`,
+            "toast--wrong"
+        );
+        flashItemPopup("wrong");
+    }
+
+    currentItem = null;
+    roadSignAnimFrame = null;
+    gameRunning = false;
+    isTutorialDemo = false;
+
+    nextItemTimer = setTimeout(startRealGame, GAP_BEFORE_NEXT_MS + 400);
 }
 
 function spawnSparkles() {
@@ -803,8 +911,15 @@ function clearFeedback() {
 function resetGame() {
 
     gameRunning = false;
+    isTutorialDemo = false;
+    stopTutorialTravel();
+    hideSpotlight();
     stopItemLoop();
     clearFeedback();
+
+    if (tutorialScreen) {
+        tutorialScreen.style.display = "none";
+    }
 
     stars = 0;
     correctCount = 0;
@@ -873,12 +988,413 @@ function startNextRound() {
     beginRide();
 }
 
+function startRealGame() {
+    buildGameRounds();
+    currentLevelIndex = 0;
+    levelResults = [];
+    beginRide();
+}
+
 if (startButton) {
-    startButton.addEventListener("click", function () {
-        buildGameRounds();
-        currentLevelIndex = 0;
-        levelResults = [];
-        beginRide();
+    startButton.addEventListener("click", startRealGame);
+}
+
+
+/* ================= TUTORIAL =================
+   A short, two-step spotlight walkthrough offered from the start screen
+   (2026-09-16 spotlight rework):
+
+   Step 1 (right side) - a demo item is already sitting in the item
+   popup; the spotlight dims everything except that popup while the text
+   explains "road signs will appear with everyday items."
+
+   Clicking Next lets the NEED/WANT signs travel partway down the road on
+   their own (runTutorialTravelToPause), then freezes them there.
+
+   Step 2 (left side) - the spotlight moves to the two paused signs while
+   the text explains sorting the item and steering into the right lane.
+
+   Clicking "Try It!" resumes that exact same travel from exactly where
+   it paused (beginTutorialDemoCatch, via roadSignResumeOffsetMs) and
+   makes the scooter interactive, so the player gets one live practice
+   catch - reusing the exact same drag/tap/animate/catch code as the real
+   game (see isTutorialDemo in resolveItem/resolveTutorialDemoItem) -
+   before startRealGame() kicks off round 1 for real.
+
+   "Skip tutorial" jumps straight to startRealGame() from either step. */
+
+// How far down the road (in the same 0-1 "visual" space positionRoadSign
+// works in, i.e. after easeInPerspective) the signs travel before
+// pausing for step 2. Paused earlier than "halfway" (2026-09-17 pacing
+// pass) so there's more room left to travel - and therefore more time to
+// think - once step 2 resumes them. Matched to the EASED position, not
+// raw elapsed time, since easeInPerspective's t*t curve means "some
+// fraction of the travel time" would only look about a quarter as far
+// down (the signs start slow and rush at the end). Solving eased(t) =
+// t*t = TUTORIAL_PAUSE_EASED_PROGRESS for t gives the raw time-progress
+// below, which is what beginTutorialDemoCatch uses to resume at exactly
+// the right point in the *real* (round-speed) travel timeline.
+const TUTORIAL_PAUSE_EASED_PROGRESS = 0.3;
+const TUTORIAL_PAUSE_RAW_PROGRESS = Math.sqrt(TUTORIAL_PAUSE_EASED_PROGRESS);
+
+// The intro travel (step 1's "Next" click -> signs pausing for step 2)
+// deliberately runs on its own short, fixed clock instead of the real
+// per-round travel time - so there's no lag between clicking Next and
+// the signs visibly moving, no matter how slow the current round's real
+// pace is. It still eases into the same TUTORIAL_PAUSE_EASED_PROGRESS
+// endpoint (see runTutorialTravelToPause), just compressed into this
+// window; only the *resume* (beginTutorialDemoCatch) needs to match real
+// gameplay pacing, and that's handled separately via tutorialPausedElapsedMs.
+const TUTORIAL_INTRO_TRAVEL_MS = 1100;
+
+const TUTORIAL_STEPS = [
+    {
+        title: "Road Signs",
+        body: "Road signs will appear with everyday items.",
+        nextLabel: "Next",
+        side: "right"
+    },
+    {
+        title: "Need or Want?",
+        body: "Decide if that item is a NEED or a WANT, then steer into the right lane.",
+        nextLabel: "Try It!",
+        side: "left"
+    }
+];
+
+let tutorialStepIndex = 0;
+
+// Separate rAF handle/clock from roadSignAnimFrame/roadSignStartTime -
+// this drives the signs' own unpaused travel *before* gameRunning is
+// true (it deliberately doesn't check gameRunning, since nothing should
+// be draggable yet at this point), so it can't reuse animateRoadSigns.
+let tutorialTravelAnimFrame = null;
+let tutorialTravelStartTime = null;
+let tutorialPausedElapsedMs = 0;
+
+
+/* ---------- spotlight ---------- */
+
+// Sizes/positions #tutorialSpotlight (the dim-with-a-cutout div) around
+// one target element, in #game's own coordinate space (both are
+// absolutely positioned within #game), plus some breathing room.
+function positionSpotlight(targetEl, padPx) {
+
+    if (!tutorialSpotlight || !targetEl || !game) {
+        return;
+    }
+
+    const gameRect = game.getBoundingClientRect();
+    const targetRect = targetEl.getBoundingClientRect();
+
+    positionSpotlightRect({
+        left: targetRect.left - gameRect.left,
+        top: targetRect.top - gameRect.top,
+        width: targetRect.width,
+        height: targetRect.height
+    }, padPx);
+}
+
+// Same, but sized to the union of both NEED/WANT signs - wherever they
+// currently are (mid-travel, paused or not), so the spotlight covers
+// both regardless of which side each landed on this item.
+function positionSpotlightOnSigns(padPx) {
+
+    if (!tutorialSpotlight || !roadSignNeed || !roadSignWant || !game) {
+        return;
+    }
+
+    const gameRect = game.getBoundingClientRect();
+    const needRect = roadSignNeed.getBoundingClientRect();
+    const wantRect = roadSignWant.getBoundingClientRect();
+
+    const left = Math.min(needRect.left, wantRect.left);
+    const top = Math.min(needRect.top, wantRect.top);
+    const right = Math.max(needRect.right, wantRect.right);
+    const bottom = Math.max(needRect.bottom, wantRect.bottom);
+
+    positionSpotlightRect({
+        left: left - gameRect.left,
+        top: top - gameRect.top,
+        width: right - left,
+        height: bottom - top
+    }, padPx);
+}
+
+function positionSpotlightRect(rect, padPx) {
+
+    if (!tutorialSpotlight) {
+        return;
+    }
+
+    const pad = padPx === undefined ? 14 : padPx;
+
+    tutorialSpotlight.style.left = (rect.left - pad) + "px";
+    tutorialSpotlight.style.top = (rect.top - pad) + "px";
+    tutorialSpotlight.style.width = (rect.width + pad * 2) + "px";
+    tutorialSpotlight.style.height = (rect.height + pad * 2) + "px";
+    tutorialSpotlight.classList.add("show");
+}
+
+function hideSpotlight() {
+
+    if (tutorialSpotlight) {
+        tutorialSpotlight.classList.remove("show");
+    }
+
+    if (tutorialSpotlightSettleTimer !== null) {
+        clearTimeout(tutorialSpotlightSettleTimer);
+        tutorialSpotlightSettleTimer = null;
+    }
+}
+
+// The very first positionSpotlight/positionSpotlightOnSigns call for a
+// step happens synchronously, before the web font (Inter, loaded async
+// via the <link> in index.html) has necessarily finished swapping in -
+// if its metrics differ from the fallback font mid-measurement, the
+// spotlight can end up sized to stale (usually narrower) text. This
+// re-measures once, a beat later, and only if the player's still on the
+// same step it was scheduled for (not a stale correction landing after
+// they've already moved on).
+let tutorialSpotlightSettleTimer = null;
+
+function scheduleSpotlightResettle(stepIndexAtCallTime) {
+
+    if (tutorialSpotlightSettleTimer !== null) {
+        clearTimeout(tutorialSpotlightSettleTimer);
+    }
+
+    tutorialSpotlightSettleTimer = setTimeout(function () {
+
+        tutorialSpotlightSettleTimer = null;
+
+        const stillOnSameStep =
+            tutorialStepIndex === stepIndexAtCallTime &&
+            tutorialScreen &&
+            tutorialScreen.style.display !== "none";
+
+        if (!stillOnSameStep) {
+            return;
+        }
+
+        if (stepIndexAtCallTime === 0) {
+            positionSpotlight(itemPopup, 16);
+        } else {
+            positionSpotlightOnSigns(14);
+        }
+    }, 250);
+}
+
+
+/* ---------- step flow ---------- */
+
+function showTutorialStep(index) {
+
+    tutorialStepIndex = index;
+
+    const step = TUTORIAL_STEPS[index];
+
+    if (tutorialTitle) {
+        tutorialTitle.textContent = step.title;
+    }
+
+    if (tutorialBody) {
+        tutorialBody.textContent = step.body;
+    }
+
+    if (tutorialNextButton) {
+        tutorialNextButton.textContent = step.nextLabel;
+    }
+
+    if (tutorialCard) {
+        tutorialCard.classList.toggle("tutorialCard--right", step.side === "right");
+        tutorialCard.classList.toggle("tutorialCard--left", step.side === "left");
+    }
+
+    if (tutorialScreen) {
+        tutorialScreen.style.display = "block";
+    }
+
+    // Step 1 (the paused signs) can be spotlighted immediately - their
+    // position/size come from direct inline styles set every frame, not
+    // a CSS animation, so there's no "still settling" window to wait
+    // out. Step 0 (the item popup) is spotlighted from
+    // onDemoItemPopupSettled() instead, once its own pop-in animation
+    // has actually finished - spotlighting it here, before that
+    // animation even starts, was sizing the spotlight to the popup's
+    // small/mid-animation box, then visibly resizing once it settled.
+    if (index === 1) {
+        positionSpotlightOnSigns(14);
+        scheduleSpotlightResettle(1);
+    }
+}
+
+function startTutorial() {
+
+    if (startScreen) {
+        startScreen.style.display = "none";
+    }
+
+    // A demo item sits in the popup from the very first tutorial step,
+    // same spot/animation as a real item, so there's already something
+    // on screen (and something for step 1's spotlight to point at)
+    // while the first step's text is explaining it.
+    const demoItem = shuffle(NEED_ITEMS.concat(WANT_ITEMS))[0];
+    currentItem = demoItem;
+
+    if (itemPopup) {
+        itemPopup.textContent = demoItem.name;
+        itemPopup.classList.remove("pop");
+        void itemPopup.offsetWidth;
+        itemPopup.classList.add("pop");
+        // The spotlight only goes up once this pop-in animation has
+        // actually finished - see onDemoItemPopupSettled - so it's never
+        // sized to the popup mid-animation while still small/overshooting.
+        itemPopup.addEventListener("animationend", onDemoItemPopupSettled, { once: true });
+    }
+
+    showTutorialStep(0);
+}
+
+function onDemoItemPopupSettled() {
+
+    // Guards against a leftover listener firing after the player's
+    // already skipped/reset past step 0.
+    if (tutorialStepIndex !== 0 || !tutorialScreen || tutorialScreen.style.display === "none") {
+        return;
+    }
+
+    positionSpotlight(itemPopup, 16);
+    scheduleSpotlightResettle(0);
+}
+
+// Step 1 -> step 2: let the NEED/WANT signs travel on their own (nothing
+// draggable yet - gameRunning is still false) until they reach the
+// halfway point, then freeze them and bring up step 2's popup right
+// beside them.
+function advanceToTutorialStep1() {
+
+    hideSpotlight();
+
+    if (tutorialScreen) {
+        tutorialScreen.style.display = "none";
+    }
+
+    if (roadSignNeed) {
+        roadSignNeed.style.opacity = "1";
+    }
+
+    if (roadSignWant) {
+        roadSignWant.style.opacity = "1";
+    }
+
+    tutorialTravelStartTime = null;
+    tutorialTravelAnimFrame = requestAnimationFrame(runTutorialTravelToPause);
+}
+
+function runTutorialTravelToPause(timestamp) {
+
+    if (tutorialTravelStartTime === null) {
+        tutorialTravelStartTime = timestamp;
+    }
+
+    const elapsed = timestamp - tutorialTravelStartTime;
+    const u = Math.min(1, elapsed / TUTORIAL_INTRO_TRAVEL_MS);
+
+    // positionRoadSign applies easeInPerspective (t*t) to whatever raw
+    // progress it's given. Feeding it (u * TUTORIAL_PAUSE_RAW_PROGRESS)
+    // means the *result* eases from 0 up to exactly
+    // TUTORIAL_PAUSE_EASED_PROGRESS as u goes 0 -> 1 - same eased "slow
+    // start, rush at the end" shape as the real travel, just compressed
+    // into this short fixed window instead of a full round's real pace.
+    const introProgress = u * TUTORIAL_PAUSE_RAW_PROGRESS;
+
+    positionRoadSign(roadSignNeed, introProgress, needIsOnLeftThisItem);
+    positionRoadSign(roadSignWant, introProgress, !needIsOnLeftThisItem);
+
+    if (u >= 1) {
+        // The *real* elapsed-time equivalent of this pause point, in the
+        // real per-round travel timeline - not this intro's own fast
+        // clock - so beginTutorialDemoCatch resumes at real gameplay
+        // pace, not the intro's sped-up one.
+        tutorialPausedElapsedMs = TUTORIAL_PAUSE_RAW_PROGRESS * currentSignTravelMs();
+        tutorialTravelAnimFrame = null;
+        showTutorialStep(1);
+        return;
+    }
+
+    tutorialTravelAnimFrame = requestAnimationFrame(runTutorialTravelToPause);
+}
+
+function stopTutorialTravel() {
+
+    if (tutorialTravelAnimFrame !== null) {
+        cancelAnimationFrame(tutorialTravelAnimFrame);
+        tutorialTravelAnimFrame = null;
+    }
+
+    tutorialTravelStartTime = null;
+}
+
+// Step 2 -> live practice catch: resume the exact same travel (same
+// item, same sides) right where the pause left it, and make the scooter
+// interactive. Deliberately does NOT call showSignsForCurrentItem() -
+// that re-rolls needIsOnLeftThisItem, which would make the already-
+// paused signs jump to the other side instead of continuing smoothly.
+function beginTutorialDemoCatch() {
+
+    hideSpotlight();
+
+    if (tutorialScreen) {
+        tutorialScreen.style.display = "none";
+    }
+
+    isTutorialDemo = true;
+    gameRunning = true;
+    setScooterX(50);
+
+    roadSignResumeOffsetMs = tutorialPausedElapsedMs;
+    roadSignStartTime = null;
+    roadSignAnimFrame = requestAnimationFrame(animateRoadSigns);
+}
+
+function skipTutorial() {
+
+    hideSpotlight();
+
+    if (tutorialScreen) {
+        tutorialScreen.style.display = "none";
+    }
+
+    stopTutorialTravel();
+    stopItemLoop();
+    isTutorialDemo = false;
+    gameRunning = false;
+    currentItem = null;
+
+    if (itemPopup) {
+        itemPopup.textContent = "";
+        itemPopup.classList.remove("pop", "itemPopup--correct", "itemPopup--wrong", "itemPopup--miss");
+    }
+
+    startRealGame();
+}
+
+if (tutorialButton) {
+    tutorialButton.addEventListener("click", startTutorial);
+}
+
+if (tutorialSkipButton) {
+    tutorialSkipButton.addEventListener("click", skipTutorial);
+}
+
+if (tutorialNextButton) {
+    tutorialNextButton.addEventListener("click", function () {
+        if (tutorialStepIndex === 0) {
+            advanceToTutorialStep1();
+        } else {
+            beginTutorialDemoCatch();
+        }
     });
 }
 
@@ -899,10 +1415,24 @@ if (resetButton) {
 setScooterX(50);
 updateStars();
 
-if (startScreen) {
-    startScreen.style.display = "flex";
-}
-
 if (finishScreen) {
     finishScreen.style.display = "none";
+}
+
+// Kiosk auto-launch: the home screen can open this page with ?tutorial=1
+// appended to its URL. When that's present, this is a fresh arrival from
+// the home screen -- skip the Start/Tutorial choice and jump straight
+// into the guided walkthrough (startTutorial() hides the start screen
+// itself). Without it (a reload, or any other way this page happens to
+// load) the normal start screen shows, same as always, and the player
+// picks Start or Tutorial themselves. This check only runs once here at
+// page load -- resetGame() and the top-bar reset button never touch the
+// URL and always bring back the normal start screen, so an in-session
+// restart is unaffected either way.
+const launchParams = new URLSearchParams(window.location.search);
+
+if (launchParams.get("tutorial") === "1") {
+    startTutorial();
+} else if (startScreen) {
+    startScreen.style.display = "flex";
 }

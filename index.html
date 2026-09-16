@@ -100,18 +100,21 @@
             </div>
         </div>
 
-        <!-- Purely decorative lane signage, looping continuously down each
-             lane the whole round - always NEED on the left, WANT on the
-             right, so the player always knows which side is which. -->
+        <!-- NEED and WANT travel down together each item, but which side
+             each lands on is randomized per item (2026-09-16 difficulty
+             bump) - so the player can't just memorize "need is always
+             left" and has to actually read the word each time. -->
         <div id="roadSignsLayer">
             <div id="roadSignNeed" class="roadSign roadSign--need">NEED</div>
             <div id="roadSignWant" class="roadSign roadSign--want">WANT</div>
         </div>
 
         <!-- Invisible tap targets - a kid can also tap a side instead of
-             dragging the scooter there. -->
-        <div class="laneZone laneZone--need" data-lane="need"></div>
-        <div class="laneZone laneZone--want" data-lane="want"></div>
+             dragging the scooter there. These are just the physical
+             left/right halves of the road; which one currently means
+             need vs. want is decided in JS per item, not fixed here. -->
+        <div class="laneZone laneZone--left" data-lane="left"></div>
+        <div class="laneZone laneZone--right" data-lane="right"></div>
 
         <!-- The word for whatever's being sorted right now. Fixed in
              place - it never travels down the road. -->
@@ -121,7 +124,7 @@
         <div id="feedbackLayer"></div>
 
         <div id="scooter">
-            <img class="scooter-img" src="images/scooter.svg" alt="">
+            <img class="scooter-img" src="images/scooter-child.svg" alt="">
         </div>
 
     </div>
@@ -165,11 +168,60 @@
                 A word will pop up for something people buy. Drag your scooter into the NEED lane or the WANT lane before time runs out!
             </p>
 
-            <button
-                id="startButton"
-                class="brandButton"
-                type="button">
-                Start
+            <div class="startActions">
+
+                <button
+                    id="startButton"
+                    class="brandButton"
+                    type="button">
+                    Start
+                </button>
+
+                <button
+                    id="tutorialButton"
+                    class="brandButton brandButton--secondary"
+                    type="button">
+                    Tutorial
+                </button>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- ================= TUTORIAL =================
+         A short, two-step walkthrough before the first real (scored)
+         round (2026-09-16 spotlight rework): step 1 sits on the right,
+         spotlighting the item popup, while the NEED/WANT signs travel
+         partway down the road on their own; step 2 sits on the left,
+         spotlighting those signs once they've paused mid-travel. Then
+         the signs resume and the player gets one live practice catch
+         before the real game begins. Skippable any time via "Skip
+         tutorial", same pattern as Kayla's other games' tutorials. -->
+
+    <div id="tutorialScreen">
+
+        <div id="tutorialSpotlight"></div>
+
+        <div id="tutorialCard" class="tutorialCard">
+
+            <div class="tutorialHeader">
+                <h2 id="tutorialTitle" class="tutorialTitle"></h2>
+
+                <button id="tutorialSkipButton" class="tutorialSkip" type="button">
+                    Skip tutorial
+                    <svg class="tutorialSkip-icon" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M6 6L18 18M18 6L6 18" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/>
+                    </svg>
+                </button>
+            </div>
+
+            <p id="tutorialBody" class="tutorialBody"></p>
+
+            <button id="tutorialNextButton" class="brandButton" type="button">
+                Next
             </button>
 
         </div>

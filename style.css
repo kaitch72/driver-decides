@@ -239,7 +239,9 @@ body {
    the road art itself is narrow) and ending full-size over their own lane
    right at the scooter - so the words always sit on the road, never out
    over the grass. The `left`/`top` here are just a sane default before
-   the first frame runs; `opacity` toggles them on/off between items. */
+   the first frame runs; `opacity` toggles them on/off between items.
+   Which physical side each one lands on is randomized fresh per item as
+   of 2026-09-16 - see needIsOnLeftThisItem in game.js. */
 
 #roadSignsLayer {
     position: absolute;
@@ -288,7 +290,9 @@ body {
 
 /* ================= LANE TAP ZONES =================
    Invisible full-height hit targets - a fallback so a kid can tap a side
-   instead of dragging the scooter there. */
+   instead of dragging the scooter there. Purely physical left/right
+   halves - which one is need vs. want for the current item is decided in
+   JS (needIsOnLeftThisItem in game.js), not fixed here. */
 
 .laneZone {
     position: absolute;
@@ -299,11 +303,11 @@ body {
     cursor: pointer;
 }
 
-.laneZone--need {
+.laneZone--left {
     left: 0;
 }
 
-.laneZone--want {
+.laneZone--right {
     left: 50%;
 }
 
@@ -473,7 +477,7 @@ body {
 
 
 /* ================= SCOOTER =================
-   Kayla's real illustrated scooter graphic (images/scooter.svg). Now
+   Kayla's real illustrated scooter graphic (images/scooter-child.svg). Now
    drag-steered directly by the player (2026-09-10 drag rework) - JS moves
    it in real time via Pointer Events, so no default transition (that would
    fight the 1:1 drag feel); a `.snap` class adds one back only for the
@@ -588,6 +592,41 @@ body {
     background: rgba(10, 23, 36, 0.55);
 }
 
+/* #tutorialScreen (2026-09-16 spotlight rework): no longer a flat dimmed
+   backdrop - it's just an inert positioning host (no background of its
+   own, clicks pass through it) that hosts #tutorialSpotlight (the actual
+   dimming, with a see-through cutout over whatever's being taught) and
+   .tutorialCard (pinned to the left or right edge, next to the cutout,
+   rather than centered). Toggled from JS - see showTutorialStep/
+   skipTutorial in game.js. */
+#tutorialScreen {
+    position: absolute;
+    z-index: 100;
+    inset: 0;
+    display: none;
+    pointer-events: none;
+}
+
+/* The dimming + "cutout" is one div sized/positioned in JS (positionSpotlight/
+   positionSpotlightOnSigns in game.js) to exactly cover whatever's being
+   taught, plus a little padding. Its own box has no fill, so that area
+   reads as fully lit; box-shadow's 9999px spread paints everything
+   *outside* the box dark instead - the standard CSS spotlight trick, no
+   need to move or re-parent the highlighted element itself. */
+#tutorialSpotlight {
+    position: absolute;
+    z-index: 1;
+    border-radius: 20px;
+    box-shadow: 0 0 0 9999px rgba(10, 23, 36, 0.62);
+    pointer-events: none;
+    opacity: 0;
+    transition: top 0.4s ease, left 0.4s ease, width 0.4s ease, height 0.4s ease, opacity 0.25s ease;
+}
+
+#tutorialSpotlight.show {
+    opacity: 1;
+}
+
 .startCard {
     position: relative;
     overflow: hidden;
@@ -632,6 +671,17 @@ body {
 .startCard > * {
     position: relative;
     z-index: 1;
+}
+
+/* align-items: center (not stretch) so Start/Tutorial stay sized to
+   their own label + padding, same as the single Start button looked
+   before Tutorial was added - stretch was making both span the full
+   card width, wider than Kayla's reference. */
+.startActions {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
 }
 
 
@@ -966,11 +1016,127 @@ body {
     background: var(--onahau);
 }
 
+/* Secondary/lower-emphasis action on the light startCard - the
+   "Tutorial" button under "Start", same pill shape as .brandButton but
+   flat grey instead of brand blue so Start stays the obvious default. */
+.brandButton--secondary {
+    background: var(--mystic);
+    color: var(--blue-black);
+    box-shadow: 0 6px 0 rgba(10, 23, 36, 0.12);
+    padding: 14px 42px;
+    font-size: clamp(16px, 1.8vw, 22px);
+}
+
+.brandButton--secondary:hover:not(:disabled) {
+    background: #DCE1E0;
+}
+
 .replay-icon {
     width: 22px;
     height: 22px;
     fill: var(--persian-blue);
     flex-shrink: 0;
+}
+
+
+/* ================= TUTORIAL CARD =================
+   Smaller, left-aligned sibling of .startCard/.finishCard - a title +
+   body + Next button, with a "Skip tutorial" text/icon control in the
+   header row (same layout Kayla uses for the tutorial popups in her
+   other games). Reused for both of the two intro steps; game.js just
+   swaps the title/body/button text between them (showTutorialStep). */
+
+.tutorialCard {
+    position: absolute;
+    z-index: 2;
+    top: 50%;
+    transform: translateY(-50%);
+    pointer-events: auto;
+
+    width: min(420px, 88vw);
+
+    background: var(--white);
+    border-radius: 26px;
+
+    padding: clamp(22px, 2.8vw, 30px);
+
+    text-align: left;
+
+    box-shadow: 0 20px 44px rgba(10, 23, 36, 0.28);
+
+    transition: left 0.4s ease, right 0.4s ease;
+}
+
+/* Which edge the card sits on - set per step in showTutorialStep(), so it
+   always lands beside the thing its spotlight is pointing at (the item
+   popup sits center-right of the road, the road signs pause center-left). */
+.tutorialCard--right {
+    right: 4%;
+}
+
+.tutorialCard--left {
+    left: 4%;
+}
+
+.tutorialHeader {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 10px;
+}
+
+.tutorialTitle {
+    margin: 0;
+    font-size: clamp(19px, 2.2vw, 25px);
+    font-weight: 800;
+    color: var(--persian-blue);
+}
+
+.tutorialSkip {
+    flex-shrink: 0;
+    margin-top: 3px;
+
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+
+    border: none;
+    background: none;
+    padding: 0;
+
+    font-family: var(--font-brand);
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--persian-blue);
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.tutorialSkip:hover {
+    text-decoration: underline;
+}
+
+.tutorialSkip-icon {
+    width: 13px;
+    height: 13px;
+    color: var(--persian-blue);
+}
+
+.tutorialBody {
+    margin: 0 0 24px;
+    font-size: clamp(14px, 1.5vw, 17px);
+    font-weight: 400;
+    line-height: 1.5;
+    color: rgba(10, 23, 36, 0.72);
+}
+
+/* Content-sized, not stretched full-width - Kayla's reference tutorial
+   popup (other games) has "Next" sized to its label, sitting left-aligned
+   under the body text, not spanning the card. */
+.tutorialCard .brandButton {
+    padding: 13px 28px;
+    font-size: clamp(15px, 1.6vw, 18px);
 }
 
 
@@ -995,7 +1161,8 @@ body {
     }
 
     .startCard,
-    .finishCard {
+    .finishCard,
+    .tutorialCard {
         padding: 25px;
     }
 
@@ -1015,8 +1182,19 @@ body {
     }
 
     .startCard,
-    .finishCard {
+    .finishCard,
+    .tutorialCard {
         width: 94vw;
+    }
+
+    /* Too little room to pin the tutorial card beside its spotlight
+       without it hanging off the edge - fall back to centered, like the
+       start/finish cards, at this width. */
+    .tutorialCard--left,
+    .tutorialCard--right {
+        left: 50%;
+        right: auto;
+        transform: translate(-50%, -50%);
     }
 
     .roadSign {
