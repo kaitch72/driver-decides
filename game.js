@@ -62,6 +62,12 @@ const SIGN_COLLISION_Y = 84;
 const SIGN_SCALE_FAR = 0.4;
 const SIGN_SCALE_NEAR = 2.2;
 
+// Once a sign reaches the scooter's row, it's either the one that got
+// caught (see SIGN fly-away below) or it just keeps rolling on down the
+// same path it was already on, same as the ambient trees/flowers do, until
+// it's clipped out of view by roadSignsLayer's own overflow:hidden edge.
+const SIGN_EXIT_Y = 120;
+
 // The road itself is drawn in perspective - narrow near the hill crest,
 // wide by the time it reaches the scooter. Rather than sliding each sign
 // between two hand-picked x positions (which can drift off the pavement
@@ -107,11 +113,6 @@ const SIGN_X_COLLISION_RIGHT = signLaneX(SIGN_COLLISION_Y, false);
 // the scooter left parked near the middle - is a miss: it never committed
 // to a lane, so it doesn't count as picking either need or want.
 const CATCH_ZONE_HALF_WIDTH = 12;
-
-// The correct/incorrect toast pops up above the scooter's own artwork
-// instead of centered on it - centering it on the scooter let its
-// handlebars clip the first word or two of the message.
-const TOAST_Y = 62;
 
 // How far the scooter is allowed to drag, in percent of #roadScene width.
 // Kept a little short of the true 0/100 edges so it never clips offscreen.
@@ -210,46 +211,76 @@ let finishOutcome = null;  // "retry" | "advance" | "complete"
 =========================================== */
 
 const NEED_ITEMS = [
-    { name: "School Supplies", category: "need" },
-    { name: "Healthy Food", category: "need" },
-    { name: "Medicine", category: "need" },
-    { name: "Toothbrush", category: "need" },
-    { name: "Backpack", category: "need" },
-    { name: "Glasses", category: "need" },
-    { name: "Soap", category: "need" },
-    { name: "Bike Helmet", category: "need" },
-    { name: "Dentist Visit", category: "need" },
-    { name: "Winter Jacket", category: "need" },
-    { name: "Water", category: "need" },
-    { name: "Groceries", category: "need" }
+    { name: "School Supplies", category: "need", icon: "images/school-supplies.svg" },
+    { name: "Healthy Food", category: "need", icon: "images/healthy-food.svg" },
+    { name: "Medicine", category: "need", icon: "images/medicine.svg" },
+    { name: "Toothbrush", category: "need", icon: "images/toothbrush.svg" },
+    { name: "Backpack", category: "need", icon: "images/backpack.svg" },
+    { name: "Glasses", category: "need", icon: "images/glasses.svg" },
+    { name: "Soap", category: "need", icon: "images/soap.svg" },
+    { name: "Bike Helmet", category: "need", icon: "images/helmet.svg" },
+    // No icon file has been provided for this one yet - itemIconSrc() below
+    // just hides the icon box gracefully when icon is missing/null.
+    { name: "Dentist Visit", category: "need", icon: null },
+    { name: "Winter Jacket", category: "need", icon: "images/winter-jacket.svg" },
+    { name: "Water", category: "need", icon: "images/water.svg" },
+    { name: "Groceries", category: "need", icon: "images/groceries.svg" }
 ];
 
 const WANT_ITEMS = [
-    { name: "Candy", category: "want" },
-    { name: "Video Games", category: "want" },
-    { name: "Fast Food", category: "want" },
-    { name: "Trading Cards", category: "want" },
-    { name: "Movie Tickets", category: "want" },
-    { name: "Soda", category: "want" },
-    { name: "Stickers", category: "want" },
-    { name: "Comic Book", category: "want" },
-    { name: "Ice Cream", category: "want" },
-    { name: "Fidget Toy", category: "want" },
-    { name: "Theme Park Ticket", category: "want" },
-    { name: "New Phone Case", category: "want" }
+    { name: "Candy", category: "want", icon: "images/candy.svg" },
+    { name: "Video Games", category: "want", icon: "images/video-games.svg" },
+    { name: "Fast Food", category: "want", icon: "images/fast-food.svg" },
+    { name: "Trading Cards", category: "want", icon: "images/trading-cards.svg" },
+    { name: "Movie Tickets", category: "want", icon: "images/movie-ticket.svg" },
+    { name: "Soda", category: "want", icon: "images/soda.svg" },
+    { name: "Stickers", category: "want", icon: "images/sticker.svg" },
+    { name: "Comic Book", category: "want", icon: "images/comic-book.svg" },
+    { name: "Ice Cream", category: "want", icon: "images/ice%20cream.svg" },
+    { name: "Fidget Toy", category: "want", icon: "images/fidget-toy.svg" },
+    { name: "Theme Park Ticket", category: "want", icon: "images/theme-park.svg" },
+    { name: "New Phone Case", category: "want", icon: "images/phone-case.svg" }
 ];
 
-// Same tone-cycling sparkle burst used for catches in Coin Catch and
-// Lemonade Stand - reused here for every correct sort.
-const SPARKLE_SVG = `
-    <svg viewBox="0 0 179.8 170" aria-hidden="true">
-        <polygon points="159.82 49.96 149.85 50 149.86 30 129.88 30 129.88 19.99 149.86 20 149.85 0 159.82 0 159.82 20 179.79 19.99 179.8 30 159.82 29.99 159.82 49.96"/>
-        <polygon points="149.83 169.96 139.86 170 139.87 150 119.89 150 119.89 139.99 139.87 140 139.86 120 149.83 120 149.82 140 169.8 139.99 169.8 150 149.83 149.99 149.83 169.96"/>
-        <path d="M64.87,149.82l-20.03-44.88L0,84.99l44.96-20.07,19.91-44.96,20.01,45.1,44.86,19.96-44.93,20-19.93,44.81ZM64.88,125.25l12.55-27.81,27.77-12.46-27.88-12.52-12.45-27.71-12.55,27.76-27.72,12.49,27.75,12.48,12.53,27.76Z"/>
-    </svg>
-`;
+// The correct-catch star burst that flies from the scooter to the dollars
+// card (see spawnCorrectStars()) - same four hand-drawn star shapes as the
+// Coin Catch/Lemonade Stand games' star bursts (images/star1-4.svg here,
+// inlined so each one's shared #8fcefa fill can be swapped for a random
+// brand tone on the fly - see randomStarSVG()).
+const STAR_SVGS = [
 
-const SPARKLE_TONES = ["#1943DC", "#258BFF", "#59D2FE"]; // Persian Blue / Blue Bird / Malibu
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 217.246 216.698"><g><g><path d="M186.93,93.47l-48.54,21.97c-10.19,4.61-18.35,12.77-22.96,22.96l-21.97,48.54-10.11-22.35-6.69-14.78-5.16-11.41c-4.61-10.19-12.77-18.35-22.96-22.96l-15.24-6.9L0,93.47l48.54-21.96c10.19-4.61,18.35-12.77,22.96-22.96L93.46,0l18.61,41.13,3.36,7.42c4.28,9.46,11.62,17.17,20.81,21.91.7.37,1.42.72,2.15,1.05l21.29,9.63,27.25,12.33Z" fill="#8fcefa"/><path d="M186.93,93.47l-48.54,21.97c-10.19,4.61-18.35,12.77-22.96,22.96l-21.97,48.54-10.11-22.35c24.69-47.1,54.91-71.32,76.33-83.45l27.25,12.33Z" fill="#001d3a" opacity=".05"/><path d="M112.07,41.13c-11.02,2.31-28.89,10.68-41.3,39.56-6.68,15.55-23.67,23.69-37.47,27.85L0,93.47l48.54-21.96c10.19-4.61,18.35-12.77,22.96-22.96L93.46,0l18.61,41.13Z" fill="#fff" opacity=".3"/></g><g><path d="M217.246,168.838l-20.85,5.32c-10.65,2.72-18.96,11.04-21.68,21.68l-5.33,20.86-5.32-20.86c-.24-.92-.51-1.83-.83-2.71-1.98-5.5-5.49-10.25-10.04-13.73-3.16-2.42-6.82-4.22-10.81-5.24l-20.85-5.32,20.85-5.33c10.64-2.72,18.96-11.03,21.68-21.68l5.32-20.85,5.33,20.85c.48,1.87,1.13,3.68,1.94,5.39,3.38,7.16,9.48,12.74,17,15.45.89.32,1.81.6,2.74.84l20.85,5.33Z" fill="#8fcefa"/><path d="M217.246,168.838l-20.85,5.32c-10.65,2.72-18.96,11.04-21.68,21.68l-5.33,20.86-5.32-20.86c-.24-.92-.51-1.83-.83-2.71,10.93-15.61,22.05-24.99,30.42-30.46.89.32,1.81.6,2.74.84l20.85,5.33Z" fill="#001d3a" opacity=".05"/><path d="M176.656,147.218c-7.265,2.09-12.868,7.753-13.42,15.45-.53,7.392-3.983,13.937-10.04,16.73-3.16-2.42-6.82-4.22-10.81-5.24l-20.85-5.32,20.85-5.33c10.64-2.72,18.96-11.03,21.68-21.68l5.32-20.85,5.33,20.85c.48,1.87,1.13,3.68,1.94,5.39Z" fill="#fff" opacity=".3"/></g></g></svg>',
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 186.93 186.94"><g><path d="M186.93,93.47l-48.54,21.97c-10.19,4.61-18.35,12.77-22.96,22.96l-21.97,48.54-10.11-22.35-6.69-14.78-5.16-11.41c-4.61-10.19-12.77-18.35-22.96-22.96l-15.24-6.9L0,93.47l48.54-21.96c10.19-4.61,18.35-12.77,22.96-22.96L93.46,0l18.61,41.13,3.36,7.42c4.28,9.46,11.62,17.17,20.81,21.91.7.37,1.42.72,2.15,1.05l21.29,9.63,27.25,12.33Z" fill="#8fcefa"/><path d="M186.93,93.47l-48.54,21.97c-10.19,4.61-18.35,12.77-22.96,22.96l-21.97,48.54-10.11-22.35c24.69-47.1,54.91-71.32,76.33-83.45l27.25,12.33Z" fill="#001d3a" opacity=".05"/><path d="M112.07,41.13c-11.02,2.31-28.89,10.68-41.3,39.56-6.68,15.55-23.67,23.69-37.47,27.85L0,93.47l48.54-21.96c10.19-4.61,18.35-12.77,22.96-22.96L93.46,0l18.61,41.13Z" fill="#fff" opacity=".3"/></g></svg>',
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 95.71 95.72"><g><path d="M95.71,47.86l-20.85,5.32c-10.65,2.72-18.96,11.04-21.68,21.68l-5.33,20.86-5.32-20.86c-.24-.92-.51-1.83-.83-2.71-1.98-5.5-5.49-10.25-10.04-13.73-3.16-2.42-6.82-4.22-10.81-5.24L0,47.86l20.85-5.33c10.64-2.72,18.96-11.03,21.68-21.68L47.85,0l5.33,20.85c.48,1.87,1.13,3.68,1.94,5.39,3.38,7.16,9.48,12.74,17,15.45.89.32,1.81.6,2.74.84l20.85,5.33Z" fill="#8fcefa"/><path d="M95.71,47.86l-20.85,5.32c-10.65,2.72-18.96,11.04-21.68,21.68l-5.33,20.86-5.32-20.86c-.24-.92-.51-1.83-.83-2.71,10.93-15.61,22.05-24.99,30.42-30.46.89.32,1.81.6,2.74.84l20.85,5.33Z" fill="#001d3a" opacity=".05"/><path d="M55.12,26.24c-7.265,2.09-12.868,7.753-13.42,15.45-.53,7.392-3.983,13.937-10.04,16.73-3.16-2.42-6.82-4.22-10.81-5.24L0,47.86l20.85-5.33c10.64-2.72,18.96-11.03,21.68-21.68L47.85,0l5.33,20.85c.48,1.87,1.13,3.68,1.94,5.39Z" fill="#fff" opacity=".3"/></g></svg>',
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 127.419 165.745"><g><g><path d="M95.71,47.86l-20.85,5.32c-10.65,2.72-18.96,11.04-21.68,21.68l-5.33,20.86-5.32-20.86c-.24-.92-.51-1.83-.83-2.71-1.98-5.5-5.49-10.25-10.04-13.73-3.16-2.42-6.82-4.22-10.81-5.24L0,47.86l20.85-5.33c10.64-2.72,18.96-11.03,21.68-21.68L47.85,0l5.33,20.85c.48,1.87,1.13,3.68,1.94,5.39,3.38,7.16,9.48,12.74,17,15.45.89.32,1.81.6,2.74.84l20.85,5.33Z" fill="#8fcefa"/><path d="M95.71,47.86l-20.85,5.32c-10.65,2.72-18.96,11.04-21.68,21.68l-5.33,20.86-5.32-20.86c-.24-.92-.51-1.83-.83-2.71,10.93-15.61,22.05-24.99,30.42-30.46.89.32,1.81.6,2.74.84l20.85,5.33Z" fill="#001d3a" opacity=".05"/><path d="M55.12,26.24c-7.265,2.09-12.868,7.753-13.42,15.45-.53,7.392-3.983,13.937-10.04,16.73-3.16-2.42-6.82-4.22-10.81-5.24L0,47.86l20.85-5.33c10.64-2.72,18.96-11.03,21.68-21.68L47.85,0l5.33,20.85c.48,1.87,1.13,3.68,1.94,5.39Z" fill="#fff" opacity=".3"/></g><g><path d="M127.419,117.886l-20.85,5.32c-10.65,2.72-18.96,11.04-21.68,21.68l-5.33,20.86-5.32-20.86c-.24-.92-.51-1.83-.83-2.71-1.98-5.5-5.49-10.25-10.04-13.73-3.16-2.42-6.82-4.22-10.81-5.24l-20.85-5.32,20.85-5.33c10.64-2.72,18.96-11.03,21.68-21.68l5.32-20.85,5.33,20.85c.48,1.87,1.13,3.68,1.94,5.39,3.38,7.16,9.48,12.74,17,15.45.89.32,1.81.6,2.74.84l20.85,5.33Z" fill="#8fcefa"/><path d="M127.419,117.886l-20.85,5.32c-10.65,2.72-18.96,11.04-21.68,21.68l-5.33,20.86-5.32-20.86c-.24-.92-.51-1.83-.83-2.71,10.93-15.61,22.05-24.99,30.42-30.46.89.32,1.81.6,2.74.84l20.85,5.33Z" fill="#001d3a" opacity=".05"/><path d="M86.829,96.265c-7.265,2.09-12.868,7.753-13.42,15.45-.53,7.392-3.983,13.937-10.04,16.73-3.16-2.42-6.82-4.22-10.81-5.24l-20.85-5.32,20.85-5.33c10.64-2.72,18.96-11.03,21.68-21.68l5.32-20.85,5.33,20.85c.48,1.87,1.13,3.68,1.94,5.39Z" fill="#fff" opacity=".3"/></g></g></svg>'
+
+];
+
+// Same full palette as Coin Catch/Lemonade Stand's randomStarSVG() - one
+// blue anchors it back to the brand, then the fully saturated version of
+// each secondary color, so a burst reads as a proper rainbow shower
+// instead of one hue.
+const STAR_TONES = [
+    "#258BFF",
+    "#FF2525",
+    "#FF25BA",
+    "#FF9D25",
+    "#FFF025",
+    "#49FF25",
+    "#9D25FF"
+];
+
+function randomStarSVG() {
+
+    const template = STAR_SVGS[Math.floor(Math.random() * STAR_SVGS.length)];
+    const tone = STAR_TONES[Math.floor(Math.random() * STAR_TONES.length)];
+
+    // Every star in STAR_SVGS shares this one #8fcefa base fill for its
+    // main facets - swapping it here recolors the whole star while
+    // leaving its dark shadow / white highlight facets (what actually
+    // give it its shape) untouched.
+    return template.split("#8fcefa").join(tone);
+}
 
 
 /* ================= ELEMENTS ================= */
@@ -259,10 +290,20 @@ const scooter = document.getElementById("scooter");
 const roadScene = document.getElementById("roadScene");
 const feedbackLayer = document.getElementById("feedbackLayer");
 const itemPopup = document.getElementById("itemPopup");
+const itemPopupIcon = document.getElementById("itemPopupIcon");
+const itemPopupText = document.getElementById("itemPopupText");
 const roadSignNeed = document.getElementById("roadSignNeed");
 const roadSignWant = document.getElementById("roadSignWant");
+const roadSignsLayer = document.getElementById("roadSignsLayer");
+
+const treeLayer = document.getElementById("treeLayer");
+const roadStripeLayer = document.getElementById("roadStripeLayer");
+const groundScrollLayer = document.getElementById("groundScrollLayer");
+const flowerLayer = document.getElementById("flowerLayer");
 
 const starsValueDisplay = document.getElementById("starsValue");
+const starsBox = document.getElementById("starsBox");
+const starFlightLayer = document.getElementById("starFlightLayer");
 
 const startScreen = document.getElementById("startScreen");
 const startButton = document.getElementById("startButton");
@@ -514,8 +555,640 @@ function hideSigns() {
     }
 }
 
+/* ================= SIGN CATCH FEEDBACK =================
+   The two live #roadSignNeed/#roadSignWant elements only ever represent
+   the CURRENT item's signs, still approaching the scooter - the instant
+   an item resolves, both of those need to be free again for the next
+   item's showSignsForCurrentItem(). So instead of animating the live
+   elements any further, each one hands off to its own throwaway clone
+   (removed from the DOM once its animation finishes) and the live
+   element is hidden right away. That lets the outgoing sign(s) keep
+   playing out on their own time without holding up the next item. */
+
+// The sign the player DIDN'T land on just keeps rolling down the same
+// path it was already on - same idea as an ambient tree/flower that
+// keeps traveling until it's clipped out of view - rather than vanishing
+// the instant it arrives.
+function continueSignOffScreen(sourceEl, isLeftSide) {
+
+    if (!sourceEl) {
+        return;
+    }
+
+    const clone = sourceEl.cloneNode(true);
+    clone.removeAttribute("id");
+
+    if (roadSignsLayer) {
+        roadSignsLayer.appendChild(clone);
+    }
+
+    sourceEl.style.opacity = "0";
+
+    const travelMs = currentSignTravelMs();
+    const startTime = performance.now();
+
+    function step(timestamp) {
+
+        const elapsed = travelMs + (timestamp - startTime);
+        const progress = elapsed / travelMs;
+        const eased = easeInPerspective(progress);
+        const y = lerp(SIGN_HORIZON_Y, SIGN_COLLISION_Y, eased);
+
+        if (y >= SIGN_EXIT_Y) {
+            if (clone.parentNode) {
+                clone.parentNode.removeChild(clone);
+            }
+            return;
+        }
+
+        const x = signLaneX(y, isLeftSide);
+        const scale = lerp(SIGN_SCALE_FAR, SIGN_SCALE_NEAR, eased);
+
+        clone.style.top = y + "%";
+        clone.style.left = x + "%";
+        clone.style.transform = `translate(-50%, -50%) scale(${scale.toFixed(3)})`;
+
+        requestAnimationFrame(step);
+    }
+
+    requestAnimationFrame(step);
+}
+
+// The sign the player DID land on flies straight up and fades out, right
+// where it's standing - the same motion the old word-toasts used - with
+// its border/glow lit green or red for correct/wrong so the color (not a
+// sentence) is what actually lands the feedback.
+function flyAwaySign(sourceEl, outcome) {
+
+    if (!sourceEl) {
+        return;
+    }
+
+    const clone = sourceEl.cloneNode(true);
+    clone.removeAttribute("id");
+    clone.style.setProperty("--catchScale", SIGN_SCALE_NEAR.toFixed(3));
+    clone.classList.add(outcome === "correct" ? "roadSign--flyCorrect" : "roadSign--flyWrong");
+
+    if (roadSignsLayer) {
+        roadSignsLayer.appendChild(clone);
+    }
+
+    sourceEl.style.opacity = "0";
+
+    setTimeout(function () {
+        if (clone.parentNode) {
+            clone.parentNode.removeChild(clone);
+        }
+    }, 950);
+}
+
+// Sends each sign off on its own exit animation based on how the item
+// resolved: whichever one (if either) the player actually landed on flies
+// up and fades with the correct/wrong outline; the other one just keeps
+// rolling on down the road untouched, same as the ambient scenery. A miss
+// (chosenLane null - the scooter never committed to a lane) means neither
+// sign was caught, so both just keep going.
+function resolveSignsFeedback(chosenLane, outcome) {
+
+    if (chosenLane === "need") {
+        flyAwaySign(roadSignNeed, outcome);
+        continueSignOffScreen(roadSignWant, !needIsOnLeftThisItem);
+    } else if (chosenLane === "want") {
+        flyAwaySign(roadSignWant, outcome);
+        continueSignOffScreen(roadSignNeed, needIsOnLeftThisItem);
+    } else {
+        continueSignOffScreen(roadSignNeed, needIsOnLeftThisItem);
+        continueSignOffScreen(roadSignWant, !needIsOnLeftThisItem);
+    }
+}
+
+
+/* ================= AMBIENT BACKGROUND MOTION =================
+   2026-09-16 perspective pass. Feedback from a playtest: with only the
+   NEED/WANT signs growing as they travel, and literally everything else
+   in the scene (road, grass, trees) sitting frozen, the signs read as
+   objects being thrown AT the player rather than the player driving
+   forward down a road - there was nothing else on screen confirming "the
+   world is moving," so the signs had no context.
+
+   Fix: two continuous, purely decorative spawners - roadside trees and
+   center-line dashes - that plant something small up at the hill crest
+   and travel/grow it down toward the bottom using the exact same
+   easeInPerspective curve already used for the signs (see positionRoadSign
+   above). With the scenery itself now receding-to-approaching in sync
+   with the signs, the whole scene reads as one moving world instead of
+   objects flying at the camera.
+
+   Both run forever from page load, independent of gameRunning/round state
+   - same as the sun/cloud drift already did - so the road already feels
+   alive behind the start screen, tutorial, and finish screen, not just
+   during active play. Neither is ever stopped or reset by resetGame() /
+   startTutorial() / etc. - there's nothing for them to interact with,
+   they just keep spawning and recycling elements underneath everything
+   else for the life of the page. */
+
+// --- Roadside trees ---
+// Alternates sides on every spawn. x is solved from the road's real left
+// edge at that row (roadLeftEdgeX, same formula the signs use to stay ON
+// the pavement) plus an outward margin that grows the deeper the tree
+// gets - so trees are always planted a clear gap out into the grass
+// instead of hugging the shoulder (which read as "static," like they'd
+// been dropped right next to the road rather than passing scenery).
+// Both the travel distance and outward margin deliberately run well past
+// the visible frame (GROUND_Y past 100%, OUTSET_NEAR far past the edge)
+// so a tree is fully clipped out of view by #roadScene's overflow:hidden
+// before it's ever removed from the DOM - it slides all the way off
+// instead of popping away while still on screen.
+// Matches GROUND_BAND_TOP (the hill line, 24.5829% + 8.7246% - hills were
+// slid up in style.css to meet the fixed road position, so this moved up
+// with them) - trees now start right where the grass does instead of
+// fading in a few points higher, which used to read as trees growing in
+// over the hill artwork itself rather than out of the grass beside the
+// road.
+const TREE_HORIZON_Y = 33.3075;
+const TREE_GROUND_Y = 118;
+const TREE_OUTSET_FAR = 7;    // % beyond the road edge at the hill crest
+const TREE_OUTSET_NEAR = 28;  // % beyond the road edge by the end of the trip
+// Extra random scatter on top of the growing offset above, fixed per tree
+// for its whole trip (same idea as FLOWER_JITTER_MAX below) - without this,
+// every tree at a given depth sits at the exact same distance from the
+// road, which reads as a mechanical row hugging the shoulder instead of
+// trees actually out in the field. Skewed so it can only ever push a tree
+// further FROM the road (0 to +max), never toward it - a negative jitter
+// would fight the base offset and risk landing a tree back on the road
+// shoulder right where it just eased away from it.
+const TREE_JITTER_MAX = 38;
+const TREE_WIDTH_FAR = 1.4;   // % of #roadScene width
+const TREE_WIDTH_NEAR = 26;
+const TREE_TRAVEL_MS = 4700;
+const TREE_SPAWN_INTERVAL_MS = 950;
+
+function treeLaneX(y, outset, isLeftSide) {
+    return isLeftSide ? roadLeftEdgeX(y) - outset : (100 - roadLeftEdgeX(y)) + outset;
+}
+
+let treeSpawnNextIsLeft = true;
+let activeTrees = [];       // { el, isLeft, jitter, startTime }
+let treeSpawnTimer = null;
+let treeAnimFrame = null;
+
+function startTreeAmbience() {
+
+    if (!treeLayer || treeSpawnTimer) {
+        return;
+    }
+
+    spawnAmbientTree();
+    treeSpawnTimer = setInterval(spawnAmbientTree, TREE_SPAWN_INTERVAL_MS);
+    treeAnimFrame = requestAnimationFrame(tickAmbientTrees);
+}
+
+function spawnAmbientTree() {
+
+    const isLeft = treeSpawnNextIsLeft;
+    treeSpawnNextIsLeft = !treeSpawnNextIsLeft;
+
+    const spot = document.createElement("div");
+    spot.className = "treeSpot";
+
+    const img = document.createElement("img");
+    img.className = "treeDecor";
+    img.src = "images/tree.svg";
+    img.alt = "";
+    // A little random sway timing per tree so a whole flight of them
+    // never sways in lockstep.
+    img.style.animationDuration = (3.4 + Math.random() * 1.0).toFixed(2) + "s";
+    img.style.animationDelay = "-" + (Math.random() * 3).toFixed(2) + "s";
+
+    spot.appendChild(img);
+    treeLayer.appendChild(spot);
+
+    // Random but fixed for this tree's whole trip, so it settles into its
+    // own spot out in the grass instead of drifting sideways as it travels.
+    const jitter = Math.random() * TREE_JITTER_MAX;
+
+    activeTrees.push({ el: spot, isLeft, jitter, startTime: null });
+}
+
+function tickAmbientTrees(timestamp) {
+
+    for (let i = activeTrees.length - 1; i >= 0; i--) {
+
+        const tree = activeTrees[i];
+
+        if (tree.startTime === null) {
+            tree.startTime = timestamp;
+        }
+
+        const elapsed = timestamp - tree.startTime;
+        const progress = Math.min(1, elapsed / TREE_TRAVEL_MS);
+        const eased = easeInPerspective(progress);
+
+        const y = lerp(TREE_HORIZON_Y, TREE_GROUND_Y, eased);
+        const outset = lerp(TREE_OUTSET_FAR, TREE_OUTSET_NEAR, eased) + tree.jitter;
+        const x = treeLaneX(y, outset, tree.isLeft);
+        // Width uses the SAME `eased` curve as position (not a separately
+        // tuned curve - two earlier attempts at that, sqrt(progress) and
+        // plain progress, both grew width faster than the tree's own
+        // on-screen depth, so a tree could reach a big size while still
+        // only partway down the screen, reading as oversized for how
+        // "close" it actually looked. Tying width to the exact same
+        // `eased` value as y guarantees size only ever reflects true
+        // depth - small near the hill line, and only reaching TREE_WIDTH_
+        // NEAR right as it reaches TREE_GROUND_Y, same as the signs.
+        const width = lerp(TREE_WIDTH_FAR, TREE_WIDTH_NEAR, eased);
+
+        tree.el.style.left = x + "%";
+        tree.el.style.top = y + "%";
+        tree.el.style.width = width + "%";
+        // Stack closer (more-progressed, bigger) trees above farther ones.
+        // Trees are appended to the DOM in spawn order and never reordered,
+        // so without this a tree spawned a moment ago (small, still near
+        // the hill line) would sit later in the DOM - and paint on TOP of
+        // an older tree that's already grown big and close, which reads as
+        // a small background tree floating in front of a large foreground
+        // one. Keying z-index to progress keeps paint order matching visual
+        // depth regardless of spawn order.
+        tree.el.style.zIndex = Math.round(progress * 1000);
+
+        if (progress >= 1) {
+            tree.el.remove();
+            activeTrees.splice(i, 1);
+        }
+    }
+
+    treeAnimFrame = requestAnimationFrame(tickAmbientTrees);
+}
+
+// --- Center-line dashes ---
+// The road's vanishing point sits dead center, so unlike the trees/signs
+// this needs no per-row x formula at all - every dash just travels
+// straight down a flat 50% left. GROUND_Y runs well past 100% for the
+// same reason as the trees above - fully clipped out of view before
+// removal, not popped away mid-screen. Spawn interval is deliberately
+// tighter than the travel duration so several dashes are always in
+// flight at once - a proper dashed line, not one dash at a time.
+// Matches the road's own fixed top edge (33.3075%, see .bg-layer--road in
+// style.css) - dashes begin exactly where the road surface itself starts,
+// instead of above it. Same figure as GROUND_BAND_TOP/TREE_HORIZON_Y,
+// since hills were slid up in style.css to meet this same line.
+const DASH_HORIZON_Y = 33.3075;
+const DASH_GROUND_Y = 112;
+const DASH_WIDTH_FAR = 0.35;   // % of #roadScene width
+const DASH_WIDTH_NEAR = 2.5;
+const DASH_HEIGHT_FAR = 1.0;   // % of #roadScene height
+const DASH_HEIGHT_NEAR = 8.5;
+const DASH_TRAVEL_MS = 3300;
+const DASH_SPAWN_INTERVAL_MS = 320;
+
+let activeDashes = [];      // { el, startTime }
+let dashSpawnTimer = null;
+let dashAnimFrame = null;
+
+function startRoadStripeAmbience() {
+
+    if (!roadStripeLayer || dashSpawnTimer) {
+        return;
+    }
+
+    spawnAmbientDash();
+    dashSpawnTimer = setInterval(spawnAmbientDash, DASH_SPAWN_INTERVAL_MS);
+    dashAnimFrame = requestAnimationFrame(tickAmbientDashes);
+}
+
+function spawnAmbientDash() {
+
+    const el = document.createElement("div");
+    el.className = "ambientDash";
+    roadStripeLayer.appendChild(el);
+
+    activeDashes.push({ el, startTime: null });
+}
+
+function tickAmbientDashes(timestamp) {
+
+    for (let i = activeDashes.length - 1; i >= 0; i--) {
+
+        const dash = activeDashes[i];
+
+        if (dash.startTime === null) {
+            dash.startTime = timestamp;
+        }
+
+        const elapsed = timestamp - dash.startTime;
+        const progress = Math.min(1, elapsed / DASH_TRAVEL_MS);
+        const eased = easeInPerspective(progress);
+
+        const y = lerp(DASH_HORIZON_Y, DASH_GROUND_Y, eased);
+        const width = lerp(DASH_WIDTH_FAR, DASH_WIDTH_NEAR, eased);
+        const height = lerp(DASH_HEIGHT_FAR, DASH_HEIGHT_NEAR, eased);
+
+        dash.el.style.top = y + "%";
+        dash.el.style.width = width + "%";
+        dash.el.style.height = height + "%";
+
+        if (progress >= 1) {
+            dash.el.remove();
+            activeDashes.splice(i, 1);
+        }
+    }
+
+    dashAnimFrame = requestAnimationFrame(tickAmbientDashes);
+}
+
+// --- Scrolling ground (light/dark grass tiles) ---
+// 2026-09-16 art breakdown: Kayla split the background into separate
+// pieces, including two grass tiles (light = further/near the hills,
+// dark = closer/foreground) meant to sit beside the road and scroll
+// continuously, so the ground itself reads as moving instead of just the
+// signs/trees.
+//
+// This deliberately does NOT track each tile's own ever-increasing
+// absolute position (two earlier versions tried that - one with a global
+// modulo offset per tile, one with a recycle-to-the-back queue - and both
+// let the whole chain drift arbitrarily far from the visible band over
+// time, which either opened a gap that only "snapped" shut once a full
+// cycle had elapsed, or eventually recycled tiles to positions that were
+// themselves already off past the bottom, permanently emptying the
+// visible band). Instead there's a single small, BOUNDED scroll amount
+// (0 up to one light+dark pair's height, then it wraps) that says how far
+// into the current pair we are, and every frame the visible sequence of
+// tiles is walked fresh from that - light, dark, light, dark... - filling
+// downward from the hill line until past the bottom of the frame. A small
+// reusable pool of <img> elements is repositioned/retyped to match; any
+// pool elements not needed this frame are just hidden. This can never
+// drift, because nothing is ever added to an already-large number - the
+// scroll amount is recomputed from elapsed time and wrapped every frame.
+const GROUND_TILE_TYPES = [
+    { src: "images/lightgrass.svg", heightPct: 30.7668, color: "#7ecc5a" }, // 332.281 / 1080
+    { src: "images/dark grass.svg", heightPct: 38.4640, color: "#70bc52" }  // 415.412 / 1080
+];
+
+const GROUND_PATTERN_HEIGHT = GROUND_TILE_TYPES.reduce((sum, t) => sum + t.heightPct, 0);
+
+// How far below the hill line the ground band starts - matches
+// .bg-layer--hills' top + height (24.5829% + 8.7246%). Hills were slid up
+// in style.css to meet the road's own fixed top edge (33.3075%) instead of
+// the road being moved down to meet them, so this line is the road's top
+// edge too now - same figure, same purpose either way.
+const GROUND_BAND_TOP = 33.3075;
+
+// Pool size - just needs to be enough to ever cover from one pattern-
+// height above the band top down past the bottom of the frame in one
+// pass; the visible band is ~54.3% tall, a pattern is 69.2% tall, so in
+// the worst case that's under 5 tiles. A little extra headroom is cheap.
+const GROUND_TILE_POOL_SIZE = 8;
+
+// Deliberate overlap on every tile - see the note where it's used below.
+// Sized generously: dark grass.svg's top edge is a wavy shape, not a flat
+// rectangle, and pixel-measuring the actual asset shows its transparent
+// sliver reaches about 2.32% of the scene's height deep at its worst
+// point before the fill starts, so a mere rounding-error-sized nudge
+// isn't enough to hide it - this needs to clear that with room to spare.
+//
+// Belt-and-suspenders: even with this overlap, each tile is painted with
+// its own matching green as a CSS background-color behind the SVG (see
+// tickGroundScroll below), so any transparent sliver anywhere in the
+// artwork - top, bottom, or a spot never measured - shows through to a
+// green that blends in, never to the page's blue background.
+const GROUND_TILE_OVERLAP = 3;
+
+// How long one light+dark PAIR's own height takes to scroll past -
+// purely ambient pacing, independent of round/game state like the trees
+// and dashes. Kayla's call (2026-09-16) - it doesn't need to match the
+// signs/road pace, just needs to feel like slow, steady ground motion
+// rather than rushing by.
+const GROUND_SCROLL_MS_PER_PAIR = 15000;
+
+const GROUND_SCROLL_SPEED = GROUND_PATTERN_HEIGHT / GROUND_SCROLL_MS_PER_PAIR; // % of scene height per ms
+
+let groundTilePool = [];       // reusable <img> elements
+let groundScrollStartTime = null;
+let groundScrollAnimFrame = null;
+
+function startGroundScrollAmbience() {
+
+    if (!groundScrollLayer || groundTilePool.length) {
+        return;
+    }
+
+    for (let i = 0; i < GROUND_TILE_POOL_SIZE; i++) {
+        // A div with the artwork as a CSS background (not an <img>), so a
+        // matching green background-color can sit directly behind it -
+        // see the note on GROUND_TILE_OVERLAP above for why.
+        const tile = document.createElement("div");
+        tile.className = "groundTile";
+        groundScrollLayer.appendChild(tile);
+        groundTilePool.push(tile);
+    }
+
+    groundScrollAnimFrame = requestAnimationFrame(tickGroundScroll);
+}
+
+function tickGroundScroll(timestamp) {
+
+    if (groundScrollStartTime === null) {
+        groundScrollStartTime = timestamp;
+    }
+
+    const elapsed = timestamp - groundScrollStartTime;
+    // Always in [0, GROUND_PATTERN_HEIGHT) no matter how long the page has
+    // been open - this one wrap is what keeps the whole system bounded.
+    const scrollIntoPattern = (elapsed * GROUND_SCROLL_SPEED) % GROUND_PATTERN_HEIGHT;
+
+    // Phased so cursor moves DOWN the screen as scrollIntoPattern grows
+    // (wrapping back up by one whole pattern-height, seamlessly, once it
+    // passes GROUND_BAND_TOP) - same direction the trees/flowers travel
+    // in, so the ground reads as coming toward the viewer like everything
+    // else, not sliding backward up toward the hills.
+    let cursor = GROUND_BAND_TOP - GROUND_PATTERN_HEIGHT + scrollIntoPattern;
+    let typeIndex = 0;
+    let poolIndex = 0;
+
+    while (cursor < 100 && poolIndex < groundTilePool.length) {
+
+        const type = GROUND_TILE_TYPES[typeIndex % GROUND_TILE_TYPES.length];
+        const tileEl = groundTilePool[poolIndex];
+
+        if (tileEl.dataset.src !== type.src) {
+            tileEl.style.backgroundImage = 'url("' + type.src + '")';
+            tileEl.style.backgroundColor = type.color;
+            tileEl.dataset.src = type.src;
+        }
+        tileEl.style.display = "block";
+        // Extend every tile up and taller by a hair (GROUND_TILE_OVERLAP) -
+        // percentage-based top/height on adjacent elements can round to
+        // sub-pixel-different edges, leaving a 1px seam that shows the
+        // page background through. Each pool element is later in DOM
+        // order than the one above it, so it already paints on top at
+        // the seam - this overlap just makes sure it actually covers it.
+        tileEl.style.top = (cursor - GROUND_TILE_OVERLAP) + "%";
+        tileEl.style.height = (type.heightPct + GROUND_TILE_OVERLAP) + "%";
+
+        cursor += type.heightPct;
+        typeIndex++;
+        poolIndex++;
+    }
+
+    // Anything left in the pool isn't needed for this frame's slice of
+    // the band - hide it rather than leaving it sitting at a stale
+    // position from an earlier frame.
+    for (; poolIndex < groundTilePool.length; poolIndex++) {
+        groundTilePool[poolIndex].style.display = "none";
+    }
+
+    groundScrollAnimFrame = requestAnimationFrame(tickGroundScroll);
+}
+
+// --- Flowers + grass patches (extra roadside detail) ---
+// Same travel-and-recycle technique as the trees, just smaller and
+// scattered more loosely across the grass (a random outward jitter on
+// top of the usual growing offset) rather than lined up right at the
+// road edge, so it reads as sprinkled detail rather than a second row of
+// trees.
+const FLOWER_ASSETS = ["images/flowerwhite.svg", "images/floweryellow.svg", "images/grasspatch.svg"];
+const PATCH_ASSET = "images/grasspatch.svg";
+// Matches TREE_HORIZON_Y/GROUND_BAND_TOP - same hill-line horizon as
+// everything else roadside, so flowers don't fade in over the hill art.
+const FLOWER_HORIZON_Y = 33.3075;
+const FLOWER_GROUND_Y = 118;
+const FLOWER_OUTSET_FAR = 3;
+const FLOWER_OUTSET_NEAR = 22;
+const FLOWER_JITTER_MAX = 26; // extra random scatter, fixed per flower for its whole trip
+// Flowers and grass patches share the same travel/outset curve above, but
+// grow to different caps: flowers stay small sprinkled detail, while grass
+// patches (being a flatter, ground-level shape rather than a little bloom)
+// can read fine a bit bigger without looking out of place.
+const FLOWER_WIDTH_FAR = 0.3;   // % of #roadScene width
+const FLOWER_WIDTH_NEAR = 4;
+const PATCH_WIDTH_FAR = 0.5;
+const PATCH_WIDTH_NEAR = 8;
+const FLOWER_TRAVEL_MS = 4300;
+const FLOWER_SPAWN_INTERVAL_MS = 560;
+
+let flowerSpawnNextIsLeft = true;
+let activeFlowers = [];     // { el, isLeft, jitter, startTime }
+let flowerSpawnTimer = null;
+let flowerAnimFrame = null;
+
+function startFlowerAmbience() {
+
+    if (!flowerLayer || flowerSpawnTimer) {
+        return;
+    }
+
+    spawnAmbientFlower();
+    flowerSpawnTimer = setInterval(spawnAmbientFlower, FLOWER_SPAWN_INTERVAL_MS);
+    flowerAnimFrame = requestAnimationFrame(tickAmbientFlowers);
+}
+
+function spawnAmbientFlower() {
+
+    const isLeft = flowerSpawnNextIsLeft;
+    flowerSpawnNextIsLeft = !flowerSpawnNextIsLeft;
+
+    const spot = document.createElement("div");
+    spot.className = "flowerSpot";
+
+    const src = FLOWER_ASSETS[Math.floor(Math.random() * FLOWER_ASSETS.length)];
+    const isPatch = src === PATCH_ASSET;
+
+    const img = document.createElement("img");
+    img.className = "flowerDecor";
+    img.src = src;
+    img.alt = "";
+
+    spot.appendChild(img);
+    flowerLayer.appendChild(spot);
+
+    // Random but fixed for this flower's whole trip, so it settles into
+    // its own "lane" out in the grass instead of drifting.
+    const jitter = (Math.random() * 2 - 1) * FLOWER_JITTER_MAX;
+
+    activeFlowers.push({ el: spot, isLeft, jitter, isPatch, startTime: null });
+}
+
+function tickAmbientFlowers(timestamp) {
+
+    for (let i = activeFlowers.length - 1; i >= 0; i--) {
+
+        const flower = activeFlowers[i];
+
+        if (flower.startTime === null) {
+            flower.startTime = timestamp;
+        }
+
+        const elapsed = timestamp - flower.startTime;
+        const progress = Math.min(1, elapsed / FLOWER_TRAVEL_MS);
+        const eased = easeInPerspective(progress);
+
+        const y = lerp(FLOWER_HORIZON_Y, FLOWER_GROUND_Y, eased);
+        const width = flower.isPatch
+            ? lerp(PATCH_WIDTH_FAR, PATCH_WIDTH_NEAR, eased)
+            : lerp(FLOWER_WIDTH_FAR, FLOWER_WIDTH_NEAR, eased);
+        // .flowerSpot is centered on its (x, y) point (translate(-50%,-50%)
+        // in CSS), so the flower/patch extends width/2 to either side of x -
+        // a flat "at least 1" floor on outset (the old behavior) only kept
+        // the CENTER off the road, not the whole shape, so anything wider
+        // than ~2% could still have its inner half poke past the road edge
+        // and disappear behind it (road paints on top, z-index 3 vs 2).
+        // Flooring outset at half the shape's own current width instead
+        // (plus a small margin) guarantees the whole flower/patch clears
+        // the road, not just its center point.
+        const outset = Math.max(width / 2 + 1, lerp(FLOWER_OUTSET_FAR, FLOWER_OUTSET_NEAR, eased) + flower.jitter);
+        const x = treeLaneX(y, outset, flower.isLeft);
+
+        flower.el.style.left = x + "%";
+        flower.el.style.top = y + "%";
+        flower.el.style.width = width + "%";
+        // Same depth-stacking fix as the trees: without this, a flower
+        // spawned a moment ago (still small, near the hill line) sits
+        // later in the DOM than an older, bigger, closer one - and paints
+        // on top of it, which reads as a tiny flower floating in front of
+        // a bigger one. Keying z-index to progress keeps paint order
+        // matching visual depth regardless of spawn order.
+        flower.el.style.zIndex = Math.round(progress * 1000);
+
+        if (progress >= 1) {
+            flower.el.remove();
+            activeFlowers.splice(i, 1);
+        }
+    }
+
+    flowerAnimFrame = requestAnimationFrame(tickAmbientFlowers);
+}
+
 
 /* ================= QUESTIONS (item popup) ================= */
+
+// Fills in the item's picture (when it has one) and its name text together.
+// Some items don't have artwork yet, so the icon box just collapses away
+// rather than showing a broken image.
+function setItemPopupContent(item) {
+    if (itemPopupText) {
+        itemPopupText.textContent = item.name;
+    }
+    if (itemPopupIcon) {
+        if (item.icon) {
+            itemPopupIcon.src = item.icon;
+            itemPopupIcon.alt = item.name;
+            itemPopupIcon.style.display = "";
+        } else {
+            itemPopupIcon.removeAttribute("src");
+            itemPopupIcon.style.display = "none";
+        }
+    }
+}
+
+function clearItemPopupContent() {
+    if (itemPopupText) {
+        itemPopupText.textContent = "";
+    }
+    if (itemPopupIcon) {
+        itemPopupIcon.removeAttribute("src");
+        itemPopupIcon.style.display = "none";
+    }
+}
 
 function pickNextItem() {
 
@@ -546,7 +1219,7 @@ function showNextItem() {
     }
 
     if (itemPopup) {
-        itemPopup.textContent = currentItem.name;
+        setItemPopupContent(currentItem);
         itemPopup.classList.remove("pop");
         // Force reflow so the pop animation re-triggers on every new item.
         void itemPopup.offsetWidth;
@@ -556,24 +1229,27 @@ function showNextItem() {
     showSignsForCurrentItem();
 }
 
-function flashItemPopup(kind) {
+// Correct/wrong feedback now lives on the sign itself (see
+// resolveSignsFeedback/flyAwaySign) - there's no sign to light up for a
+// miss, though, since the scooter never landed on either one, so the
+// item popup box is still what flashes red for that one case.
+function flashItemPopupMiss() {
 
     if (!itemPopup) {
         return;
     }
 
-    const className = kind === "correct"
-        ? "itemPopup--correct"
-        : kind === "miss"
-            ? "itemPopup--miss"
-            : "itemPopup--wrong";
-    itemPopup.classList.remove("itemPopup--correct", "itemPopup--wrong", "itemPopup--miss");
+    // "pop" (added whenever the item text last changed) has higher CSS
+    // specificity than .itemPopup--miss (.itemPopup.pop vs.
+    // .itemPopup--miss), so if it's left on, it silently wins the cascade
+    // and blocks the color animation entirely. Clear it here too.
+    itemPopup.classList.remove("pop", "itemPopup--miss");
     void itemPopup.offsetWidth;
-    itemPopup.classList.add(className);
+    itemPopup.classList.add("itemPopup--miss");
 
     setTimeout(function () {
-        itemPopup.classList.remove(className);
-    }, 500);
+        itemPopup.classList.remove("itemPopup--miss");
+    }, 900);
 }
 
 function resolveItem() {
@@ -594,10 +1270,6 @@ function resolveItem() {
 
     totalSorted++;
 
-    // The signs have arrived - hide them right away, they've been "caught"
-    // (or missed, if the scooter never committed to a lane).
-    hideSigns();
-
     if (chosenLane === null) {
 
         // Parked near the middle - a legitimate "I don't know" rather than
@@ -605,33 +1277,22 @@ function resolveItem() {
         // showing what it was so they can try to beat it to a lane next time.
         missCount++;
 
-        spawnToast(
-            `That one got away - it was a ${currentItem.category}!`,
-            "toast--miss"
-        );
-        flashItemPopup("miss");
+        resolveSignsFeedback(chosenLane);
+        flashItemPopupMiss();
 
     } else if (currentItem.category === chosenLane) {
 
         correctCount++;
         stars++;
 
-        spawnSparkles();
-        spawnToast(
-            `Yes! That's a ${currentItem.category}!`,
-            "toast--correct"
-        );
-        flashItemPopup("correct");
+        spawnCorrectStars();
+        resolveSignsFeedback(chosenLane, "correct");
 
     } else {
 
         wrongCount++;
 
-        spawnToast(
-            `Actually, that's a ${currentItem.category}!`,
-            "toast--wrong"
-        );
-        flashItemPopup("wrong");
+        resolveSignsFeedback(chosenLane, "wrong");
     }
 
     updateStars();
@@ -646,39 +1307,25 @@ function resolveItem() {
     }
 }
 
-// Same catch feedback as a real item (toast + sparkle + item-popup flash),
-// but no star/correct/wrong/miss tally and no round progress - this is
-// just a practice swing. Once the feedback's had a moment to land, it
-// hands off straight to the real game (startRealGame), same as clicking
-// Start would.
+// Same catch feedback as a real item (sparkle + item-popup glow), but no
+// star/correct/wrong/miss tally and no round progress - this is just a
+// practice swing. Once the feedback's had a moment to land, it hands off
+// straight to the real game (startRealGame), same as clicking Start would.
 function resolveTutorialDemoItem(chosenLane) {
-
-    hideSigns();
 
     if (chosenLane === null) {
 
-        spawnToast(
-            `That one got away - it was a ${currentItem.category}!`,
-            "toast--miss"
-        );
-        flashItemPopup("miss");
+        resolveSignsFeedback(chosenLane);
+        flashItemPopupMiss();
 
     } else if (currentItem.category === chosenLane) {
 
-        spawnSparkles();
-        spawnToast(
-            `Yes! That's a ${currentItem.category}!`,
-            "toast--correct"
-        );
-        flashItemPopup("correct");
+        spawnCorrectStars();
+        resolveSignsFeedback(chosenLane, "correct");
 
     } else {
 
-        spawnToast(
-            `Actually, that's a ${currentItem.category}!`,
-            "toast--wrong"
-        );
-        flashItemPopup("wrong");
+        resolveSignsFeedback(chosenLane, "wrong");
     }
 
     currentItem = null;
@@ -689,63 +1336,157 @@ function resolveTutorialDemoItem(chosenLane) {
     nextItemTimer = setTimeout(startRealGame, GAP_BEFORE_NEXT_MS + 400);
 }
 
-function spawnSparkles() {
+// How long a single star's flight takes, and the max random stagger added
+// per star before it launches, so the group doesn't travel as one rigid
+// clump.
+const STAR_FLIGHT_MS = 800;
+const STAR_STAGGER_MAX_MS = 150;
+const STAR_ARC_LIFT_MIN = 50;
+const STAR_ARC_LIFT_MAX = 90;
 
-    const centerLeft = scooterX;
-    const centerTop = SIGN_COLLISION_Y;
-    const sparkleCount = 9;
+// An element's center, in pixels relative to referenceEl's own top-left
+// corner - lets two elements that live in completely different parts of
+// the DOM (the scooter, nested deep in #roadScene; the dollars card, a
+// sibling of it) still be positioned against one shared, simple
+// coordinate space (referenceEl's own box).
+function centerRelativeTo(el, referenceEl) {
 
-    for (let i = 0; i < sparkleCount; i++) {
+    const rect = el.getBoundingClientRect();
+    const refRect = referenceEl.getBoundingClientRect();
 
-        const sparkle = document.createElement("span");
-        sparkle.className = "sparkle";
-        sparkle.innerHTML = SPARKLE_SVG;
+    return {
+        x: rect.left + rect.width / 2 - refRect.left,
+        y: rect.top + rect.height / 2 - refRect.top
+    };
+}
 
-        const svgEl = sparkle.querySelector("svg");
-        if (svgEl) {
-            svgEl.style.fill =
-                SPARKLE_TONES[Math.floor(Math.random() * SPARKLE_TONES.length)];
+function easeInOutCubic(t) {
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+// Piecewise but driven straight off raw (un-eased) progress each frame,
+// not off keyframe percentages - a little pop on launch, settle down to a
+// steady size mid-flight, shrink away as it lands.
+function starScaleAt(p) {
+    if (p < 0.18) {
+        return lerp(0.4, 1.15, p / 0.18);
+    }
+    if (p < 0.55) {
+        return lerp(1.15, 0.85, (p - 0.18) / 0.37);
+    }
+    return lerp(0.85, 0.3, (p - 0.55) / 0.45);
+}
+
+function starOpacityAt(p) {
+    if (p < 0.12) {
+        return p / 0.12;
+    }
+    if (p > 0.8) {
+        return Math.max(0, 1 - (p - 0.8) / 0.2);
+    }
+    return 1;
+}
+
+// Drives one star's whole flight from a single continuous eased progress
+// value along a quadratic bezier (start -> arc control point -> end).
+// Deliberately NOT built from CSS @keyframes: a percentage-of-the-way
+// keyframe re-applies the timing function fresh for the NEXT segment, so
+// the animation decelerated hard approaching that keyframe and then had
+// to re-accelerate from a near-standstill into the next one - which read
+// as the star pausing and slipping backward before continuing. A single
+// unbroken curve, updated every frame like the road signs/ambient scenery
+// elsewhere in this file, has no segment boundary for that hitch to
+// happen at.
+function launchStar(startX, startY, controlX, controlY, endX, endY) {
+
+    if (!starFlightLayer) {
+        return;
+    }
+
+    const star = document.createElement("span");
+    star.className = "flyStar";
+    star.innerHTML = randomStarSVG();
+    star.style.opacity = "0";
+
+    starFlightLayer.appendChild(star);
+
+    const startTime = performance.now();
+
+    function step(timestamp) {
+
+        const rawProgress = Math.min(1, (timestamp - startTime) / STAR_FLIGHT_MS);
+        const eased = easeInOutCubic(rawProgress);
+        const remaining = 1 - eased;
+
+        // Quadratic bezier: the control point sits directly above the
+        // straight-line midpoint, so horizontally this collapses to a
+        // perfectly linear left/right path (no possibility of an X
+        // reversal), while vertically it bows the path into one clean arc.
+        const x = remaining * remaining * startX + 2 * remaining * eased * controlX + eased * eased * endX;
+        const y = remaining * remaining * startY + 2 * remaining * eased * controlY + eased * eased * endY;
+
+        star.style.left = x + "px";
+        star.style.top = y + "px";
+        star.style.opacity = starOpacityAt(rawProgress).toFixed(2);
+        star.style.transform = `translate(-50%, -50%) scale(${starScaleAt(rawProgress).toFixed(3)})`;
+
+        if (rawProgress < 1) {
+            requestAnimationFrame(step);
+        } else if (star.parentNode) {
+            star.parentNode.removeChild(star);
         }
+    }
 
-        const angle = Math.random() * Math.PI * 2;
-        const distance = 24 + Math.random() * 34;
+    requestAnimationFrame(step);
+}
 
-        sparkle.style.left = centerLeft + "%";
-        sparkle.style.top = centerTop + "%";
-        sparkle.style.setProperty("--tx", (Math.cos(angle) * distance).toFixed(1) + "px");
-        sparkle.style.setProperty("--ty", (Math.sin(angle) * distance).toFixed(1) + "px");
-        sparkle.style.animationDelay = Math.floor(Math.random() * 90) + "ms";
+// A little burst of colorful stars leaves the scooter and arcs up into
+// the dollars card - same star graphics/recoloring technique as the
+// Coin Catch/Lemonade Stand games' catch bursts, just traveling to a
+// destination instead of radiating in place and fading on the spot.
+function spawnCorrectStars() {
 
-        if (feedbackLayer) {
-            feedbackLayer.appendChild(sparkle);
-        }
+    if (!starFlightLayer || !scooter || !starsBox) {
+        return;
+    }
+
+    const origin = centerRelativeTo(scooter, starFlightLayer);
+    const destination = centerRelativeTo(starsBox, starFlightLayer);
+
+    const starCount = 7;
+
+    for (let i = 0; i < starCount; i++) {
+
+        // A little scatter around the scooter at launch, like a small
+        // burst, before the group arcs up and over to the card.
+        const startX = origin.x + (Math.random() * 2 - 1) * 18;
+        const startY = origin.y + (Math.random() * 2 - 1) * 18;
+        const lift = STAR_ARC_LIFT_MIN + Math.random() * (STAR_ARC_LIFT_MAX - STAR_ARC_LIFT_MIN);
+
+        const controlX = (startX + destination.x) / 2;
+        const controlY = (startY + destination.y) / 2 - lift;
+
+        const delay = Math.floor(Math.random() * STAR_STAGGER_MAX_MS);
 
         setTimeout(function () {
-            if (sparkle.parentNode) {
-                sparkle.parentNode.removeChild(sparkle);
-            }
-        }, 850);
-    }
-}
-
-function spawnToast(text, className) {
-
-    const toast = document.createElement("div");
-    toast.className = "catchToast " + className;
-    toast.textContent = text;
-    toast.style.top = TOAST_Y + "%";
-    toast.style.left = scooterX + "%";
-
-    if (feedbackLayer) {
-        feedbackLayer.appendChild(toast);
+            launchStar(startX, startY, controlX, controlY, destination.x, destination.y);
+        }, delay);
     }
 
+    // A quick bump on the card itself, timed to when the stars actually
+    // land rather than the instant they're launched.
     setTimeout(function () {
-        if (toast.parentNode) {
-            toast.parentNode.removeChild(toast);
-        }
-    }, 1100);
+        starsBox.classList.remove("starsBox--pulse");
+        void starsBox.offsetWidth;
+        starsBox.classList.add("starsBox--pulse");
+
+        setTimeout(function () {
+            starsBox.classList.remove("starsBox--pulse");
+        }, 400);
+
+    }, STAR_FLIGHT_MS - 100);
 }
+
 
 
 /* ================= RIDE END ================= */
@@ -935,8 +1676,8 @@ function resetGame() {
     updateStars();
 
     if (itemPopup) {
-        itemPopup.textContent = "";
-        itemPopup.classList.remove("pop", "itemPopup--correct", "itemPopup--wrong", "itemPopup--miss");
+        clearItemPopupContent();
+        itemPopup.classList.remove("pop", "itemPopup--miss");
     }
 
     if (finishScreen) {
@@ -974,8 +1715,8 @@ function beginRide() {
     updateStars();
 
     if (itemPopup) {
-        itemPopup.textContent = "";
-        itemPopup.classList.remove("pop", "itemPopup--correct", "itemPopup--wrong", "itemPopup--miss");
+        clearItemPopupContent();
+        itemPopup.classList.remove("pop", "itemPopup--miss");
     }
 
     gameRunning = true;
@@ -1243,7 +1984,7 @@ function startTutorial() {
     currentItem = demoItem;
 
     if (itemPopup) {
-        itemPopup.textContent = demoItem.name;
+        setItemPopupContent(demoItem);
         itemPopup.classList.remove("pop");
         void itemPopup.offsetWidth;
         itemPopup.classList.add("pop");
@@ -1373,8 +2114,8 @@ function skipTutorial() {
     currentItem = null;
 
     if (itemPopup) {
-        itemPopup.textContent = "";
-        itemPopup.classList.remove("pop", "itemPopup--correct", "itemPopup--wrong", "itemPopup--miss");
+        clearItemPopupContent();
+        itemPopup.classList.remove("pop", "itemPopup--miss");
     }
 
     startRealGame();
@@ -1418,6 +2159,14 @@ updateStars();
 if (finishScreen) {
     finishScreen.style.display = "none";
 }
+
+// Ambient road motion (scrolling ground, trees, flowers, center-line
+// dashes) - runs forever from here, independent of game/round state. See
+// AMBIENT BACKGROUND MOTION.
+startGroundScrollAmbience();
+startTreeAmbience();
+startFlowerAmbience();
+startRoadStripeAmbience();
 
 // Kiosk auto-launch: the home screen can open this page with ?tutorial=1
 // appended to its URL. When that's present, this is a fresh arrival from
