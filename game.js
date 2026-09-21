@@ -219,9 +219,7 @@ const NEED_ITEMS = [
     { name: "Glasses", category: "need", icon: "images/glasses.svg" },
     { name: "Soap", category: "need", icon: "images/soap.svg" },
     { name: "Bike Helmet", category: "need", icon: "images/helmet.svg" },
-    // No icon file has been provided for this one yet - itemIconSrc() below
-    // just hides the icon box gracefully when icon is missing/null.
-    { name: "Dentist Visit", category: "need", icon: null },
+    { name: "Dentist Visit", category: "need", icon: "images/dentist.svg" },
     { name: "Winter Jacket", category: "need", icon: "images/winter-jacket.svg" },
     { name: "Water", category: "need", icon: "images/water.svg" },
     { name: "Groceries", category: "need", icon: "images/groceries.svg" }
@@ -296,10 +294,16 @@ const roadSignNeed = document.getElementById("roadSignNeed");
 const roadSignWant = document.getElementById("roadSignWant");
 const roadSignsLayer = document.getElementById("roadSignsLayer");
 
-const treeLayer = document.getElementById("treeLayer");
+// Trees, flowers, and landmarks all spawn into this ONE shared layer (see
+// the AMBIENT SCENERY LAYER comment in style.css) so their individual
+// progress-based z-index values sort correctly against each other - three
+// separate layer divs used to let a whole later layer paint over an
+// earlier one's contents regardless of actual depth, which is what caused
+// trees/grass to render in front of a landmark they were supposedly
+// behind.
+const ambientLayer = document.getElementById("ambientLayer");
 const roadStripeLayer = document.getElementById("roadStripeLayer");
 const groundScrollLayer = document.getElementById("groundScrollLayer");
-const flowerLayer = document.getElementById("flowerLayer");
 
 const starsValueDisplay = document.getElementById("starsValue");
 const starsBox = document.getElementById("starsBox");
@@ -734,7 +738,7 @@ let treeAnimFrame = null;
 
 function startTreeAmbience() {
 
-    if (!treeLayer || treeSpawnTimer) {
+    if (!ambientLayer || treeSpawnTimer) {
         return;
     }
 
@@ -761,7 +765,7 @@ function spawnAmbientTree() {
     img.style.animationDelay = "-" + (Math.random() * 3).toFixed(2) + "s";
 
     spot.appendChild(img);
-    treeLayer.appendChild(spot);
+    ambientLayer.appendChild(spot);
 
     // Random but fixed for this tree's whole trip, so it settles into its
     // own spot out in the grass instead of drifting sideways as it travels.
@@ -818,6 +822,120 @@ function tickAmbientTrees(timestamp) {
     }
 
     treeAnimFrame = requestAnimationFrame(tickAmbientTrees);
+}
+
+// --- Roadside landmarks (billboard + credit union branch) ---
+// 2026-09-21 client feedback: an occasional billboard and credit union
+// branch building should pass by in the background, using this same
+// travel/perspective-growth dynamic as the trees above - but far more
+// rarely. Reuses TREE_HORIZON_Y/TREE_GROUND_Y (the exact same hill line
+// and bottom edge the trees/flowers already travel between) and
+// treeLaneX (the same road-edge-relative positioning formula), so a
+// landmark eases down the same path a tree would, just set back a bit
+// further from the shoulder (bigger OUTSET figures) since these are meant
+// to read as set-piece background scenery, not roadside foliage.
+// Alternates asset (billboard, then branch, then billboard again...) each
+// time one spawns, so both eventually show up without ever doubling up on
+// the same one twice in a row. Spawn interval is deliberately huge next to
+// TREE_SPAWN_INTERVAL_MS (950) / FLOWER_SPAWN_INTERVAL_MS (560) - this is
+// a "every once in a while" flourish, not steady scenery.
+const LANDMARK_ASSETS = ["images/SP-billboard.svg", "images/SP-branch.svg"];
+// Kept noticeably more conservative than TREE_OUTSET_FAR/NEAR and
+// TREE_JITTER_MAX - a tree that happens to roll max jitter and drifts
+// off-frame early is invisible in a dense stream of them, but a landmark
+// is the only prominent thing on screen when it appears, so it needs to
+// stay comfortably inside the visible frame through most of its trip
+// instead of clipping out early. It's still expected to eventually exit
+// past the frame edge right at the very end, same as the trees do - that
+// reads as "passing by close up," not a bug.
+const LANDMARK_OUTSET_FAR = 8;    // % beyond the road edge at the hill crest
+const LANDMARK_OUTSET_NEAR = 22;  // % beyond the road edge by the end of the trip
+const LANDMARK_JITTER_MAX = 12;   // same idea as TREE_JITTER_MAX - random extra setback, fixed per landmark for its whole trip
+const LANDMARK_WIDTH_FAR = 2.4;   // % of #roadScene width
+const LANDMARK_WIDTH_NEAR = 44;
+const LANDMARK_TRAVEL_MS = TREE_TRAVEL_MS; // same growth pacing as the trees
+const LANDMARK_SPAWN_INTERVAL_MS = 15000;  // ~15s between landmarks - rare, not ambient filler
+
+let landmarkSpawnNextIsLeft = true;
+let landmarkSpawnNextAssetIndex = 0;
+let activeLandmarks = [];   // { el, isLeft, jitter, startTime }
+let landmarkSpawnTimer = null;
+let landmarkAnimFrame = null;
+
+function startLandmarkAmbience() {
+
+    if (!ambientLayer || landmarkSpawnTimer) {
+        return;
+    }
+
+    // Unlike the trees/flowers, deliberately no immediate spawnAmbientLandmark()
+    // call here - the first billboard/branch should ease in after a normal
+    // wait like any other, not greet the player the instant the page loads.
+    landmarkSpawnTimer = setInterval(spawnAmbientLandmark, LANDMARK_SPAWN_INTERVAL_MS);
+    landmarkAnimFrame = requestAnimationFrame(tickAmbientLandmarks);
+}
+
+function spawnAmbientLandmark() {
+
+    const isLeft = landmarkSpawnNextIsLeft;
+    landmarkSpawnNextIsLeft = !landmarkSpawnNextIsLeft;
+
+    const asset = LANDMARK_ASSETS[landmarkSpawnNextAssetIndex];
+    landmarkSpawnNextAssetIndex = (landmarkSpawnNextAssetIndex + 1) % LANDMARK_ASSETS.length;
+
+    const spot = document.createElement("div");
+    spot.className = "landmarkSpot";
+
+    const img = document.createElement("img");
+    img.className = "landmarkDecor";
+    img.src = asset;
+    img.alt = "";
+
+    spot.appendChild(img);
+    ambientLayer.appendChild(spot);
+
+    // Random but fixed for this landmark's whole trip, same idea as the
+    // trees' jitter - keeps every billboard/branch from planting at the
+    // exact same distance from the road every time.
+    const jitter = Math.random() * LANDMARK_JITTER_MAX;
+
+    activeLandmarks.push({ el: spot, isLeft, jitter, startTime: null });
+}
+
+function tickAmbientLandmarks(timestamp) {
+
+    for (let i = activeLandmarks.length - 1; i >= 0; i--) {
+
+        const landmark = activeLandmarks[i];
+
+        if (landmark.startTime === null) {
+            landmark.startTime = timestamp;
+        }
+
+        const elapsed = timestamp - landmark.startTime;
+        const progress = Math.min(1, elapsed / LANDMARK_TRAVEL_MS);
+        const eased = easeInPerspective(progress);
+
+        const y = lerp(TREE_HORIZON_Y, TREE_GROUND_Y, eased);
+        const outset = lerp(LANDMARK_OUTSET_FAR, LANDMARK_OUTSET_NEAR, eased) + landmark.jitter;
+        const x = treeLaneX(y, outset, landmark.isLeft);
+        const width = lerp(LANDMARK_WIDTH_FAR, LANDMARK_WIDTH_NEAR, eased);
+
+        landmark.el.style.left = x + "%";
+        landmark.el.style.top = y + "%";
+        landmark.el.style.width = width + "%";
+        // Same depth-stacking fix as the trees - keeps a landmark that's
+        // gotten big and close from ever painting behind one still small
+        // and distant, regardless of spawn order.
+        landmark.el.style.zIndex = Math.round(progress * 1000);
+
+        if (progress >= 1) {
+            landmark.el.remove();
+            activeLandmarks.splice(i, 1);
+        }
+    }
+
+    landmarkAnimFrame = requestAnimationFrame(tickAmbientLandmarks);
 }
 
 // --- Center-line dashes ---
@@ -1073,7 +1191,7 @@ let flowerAnimFrame = null;
 
 function startFlowerAmbience() {
 
-    if (!flowerLayer || flowerSpawnTimer) {
+    if (!ambientLayer || flowerSpawnTimer) {
         return;
     }
 
@@ -1099,7 +1217,7 @@ function spawnAmbientFlower() {
     img.alt = "";
 
     spot.appendChild(img);
-    flowerLayer.appendChild(spot);
+    ambientLayer.appendChild(spot);
 
     // Random but fixed for this flower's whole trip, so it settles into
     // its own "lane" out in the grass instead of drifting.
@@ -1161,21 +1279,67 @@ function tickAmbientFlowers(timestamp) {
 
 /* ================= QUESTIONS (item popup) ================= */
 
+// Every item icon is fetched once up front (see preloadItemIcons below) and
+// kept in the browser's own image cache, so by the time a real item needs
+// one, swapping <img src> to it is effectively instant instead of kicking
+// off a fresh fetch/decode.
+const ITEM_ICON_CACHE = {};
+
+function preloadItemIcons() {
+    NEED_ITEMS.concat(WANT_ITEMS).forEach(function (item) {
+        if (item.icon && !ITEM_ICON_CACHE[item.icon]) {
+            const img = new Image();
+            img.src = item.icon;
+            ITEM_ICON_CACHE[item.icon] = img;
+        }
+    });
+}
+preloadItemIcons();
+
 // Fills in the item's picture (when it has one) and its name text together.
 // Some items don't have artwork yet, so the icon box just collapses away
 // rather than showing a broken image.
+//
+// The picture is kept hidden (visibility, not display, so it doesn't shift
+// the layout) from the moment we start swapping it until the NEW image has
+// actually finished decoding and is ready to paint. Without this, changing
+// itemPopupIcon.src still shows the previous item's picture on screen for a
+// frame or two while the browser loads the new one in - visible as the old
+// graphic flashing before the right one snaps in. Preloading (above) makes
+// that gap tiny in practice, but this guarantees it can never show stale art
+// even on a slower load.
 function setItemPopupContent(item) {
     if (itemPopupText) {
         itemPopupText.textContent = item.name;
     }
     if (itemPopupIcon) {
+        itemPopupIcon.onload = null;
+        itemPopupIcon.onerror = null;
         if (item.icon) {
-            itemPopupIcon.src = item.icon;
-            itemPopupIcon.alt = item.name;
+            itemPopupIcon.style.visibility = "hidden";
             itemPopupIcon.style.display = "";
+            itemPopupIcon.alt = item.name;
+
+            const reveal = function () {
+                itemPopupIcon.style.visibility = "";
+            };
+
+            itemPopupIcon.src = item.icon;
+
+            if (itemPopupIcon.complete && itemPopupIcon.naturalWidth > 0) {
+                // Already decoded (the normal case, thanks to preloading) -
+                // reveal next frame rather than instantly, so the picture
+                // pops in together with the pop-in animation instead of
+                // appearing a beat before it.
+                requestAnimationFrame(reveal);
+            } else {
+                itemPopupIcon.onload = reveal;
+                itemPopupIcon.onerror = reveal;
+            }
         } else {
             itemPopupIcon.removeAttribute("src");
             itemPopupIcon.style.display = "none";
+            itemPopupIcon.style.visibility = "";
         }
     }
 }
@@ -1185,8 +1349,11 @@ function clearItemPopupContent() {
         itemPopupText.textContent = "";
     }
     if (itemPopupIcon) {
+        itemPopupIcon.onload = null;
+        itemPopupIcon.onerror = null;
         itemPopupIcon.removeAttribute("src");
         itemPopupIcon.style.display = "none";
+        itemPopupIcon.style.visibility = "";
     }
 }
 
@@ -2166,6 +2333,7 @@ if (finishScreen) {
 startGroundScrollAmbience();
 startTreeAmbience();
 startFlowerAmbience();
+startLandmarkAmbience();
 startRoadStripeAmbience();
 
 // Kiosk auto-launch: the home screen can open this page with ?tutorial=1

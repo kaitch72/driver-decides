@@ -342,6 +342,30 @@ body {
 }
 
 
+/* ================= AMBIENT SCENERY LAYER (shared) =================
+   2026-09-21 depth-stacking fix: trees, flowers/grass patches, and the
+   billboard/branch landmarks all used to live in their own separate layer
+   div, each with its own z-index:2 - which meant each was its own
+   stacking context, and a WHOLE layer added later in the DOM painted over
+   an earlier layer's contents wholesale, regardless of each individual
+   piece's own depth-based z-index (see tickAmbientTrees/Flowers/Landmarks
+   in game.js - each already sets Math.round(progress*1000) per element,
+   but that only sorts correctly against siblings in the SAME stacking
+   context). Reported bug: a small, distant tree rendering in front of a
+   big, close landmark that was supposedly behind it. Fix: one shared
+   #ambientLayer that every spawner appends into, so their per-element
+   z-index values actually compete against each other correctly no matter
+   which spawner planted which piece. */
+
+#ambientLayer {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+
 /* ================= TREES (roadside, forward-motion cue) =================
    2026-09-16 perspective pass: trees are no longer four fixed spots - a
    spawner in JS (see AMBIENT BACKGROUND MOTION in game.js) keeps planting
@@ -356,14 +380,6 @@ body {
    rather than drifting off its spot. A little random animation-duration/
    delay per tree (set inline by JS when it's created) keeps them from all
    swaying in lockstep. */
-
-#treeLayer {
-    position: absolute;
-    inset: 0;
-    z-index: 2;
-    pointer-events: none;
-    overflow: hidden;
-}
 
 .treeSpot {
     position: absolute;
@@ -388,6 +404,31 @@ body {
 }
 
 
+/* ================= ROADSIDE LANDMARKS (billboard, branch) =================
+   2026-09-21 client feedback: same travel-and-recycle spawner as the trees
+   above (see AMBIENT BACKGROUND MOTION in game.js), just a rare set-piece
+   instead of steady scenery - a billboard eases by, then later a credit
+   union branch building, alternating, spawning maybe once every 15
+   seconds. Anchored the same way as .treeSpot (translate(-50%, -100%) -
+   base of the structure pinned to its ground point) since both SP-
+   billboard.svg and SP-branch.svg are drawn standing all the way down to
+   the bottom of their own viewBox, same as tree.svg. No sway animation -
+   these are built structures, not foliage. */
+
+.landmarkSpot {
+    position: absolute;
+    transform: translate(-50%, -100%);
+    user-select: none;
+}
+
+.landmarkDecor {
+    display: block;
+    width: 100%;
+    height: auto;
+    -webkit-user-drag: none;
+}
+
+
 /* ================= FLOWERS + GRASS PATCHES (roadside detail) =================
    2026-09-16 art breakdown: the same travel-and-recycle idea as the trees,
    just smaller ground detail (flowerwhite.svg, floweryellow.svg,
@@ -395,14 +436,6 @@ body {
    hugging the road edge - see AMBIENT BACKGROUND MOTION in game.js.
    .flowerSpot anchors each piece by its center (these don't have a
    trunk/base to pin like the trees do). */
-#flowerLayer {
-    position: absolute;
-    inset: 0;
-    z-index: 2;
-    pointer-events: none;
-    overflow: hidden;
-}
-
 .flowerSpot {
     position: absolute;
     transform: translate(-50%, -50%);
@@ -578,15 +611,24 @@ body {
     align-items: center;
     gap: 4px;
 
+    /* Fixed width instead of shrink-to-fit, so the sign doesn't resize
+       every time a new item comes up - sized to fit the longest item name
+       ("Theme Park Ticket") with a little breathing room, in em so it
+       scales together with font-size at every breakpoint. The +72px
+       covers this rule's own fixed horizontal padding (30px each side)
+       plus border (6px each side); the two responsive breakpoints below
+       use the same em figure with their own (smaller) padding/border math
+       swapped in. */
+    width: calc(9.2em + 72px);
     min-height: 1em;
     background: var(--white);
     border: 6px solid var(--persian-blue);
     border-radius: 22px;
-    padding: 12px 38px 16px;
+    padding: 12px 30px 14px;
 
     font-family: var(--font-brand);
     font-weight: 800;
-    font-size: clamp(22px, 3.2vw, 42px);
+    font-size: clamp(15px, 2.1vw, 27px);
     color: var(--blue-black);
     text-align: center;
 
@@ -1395,8 +1437,10 @@ body {
     }
 
     .itemPopup {
-        padding: 8px 22px 10px;
+        width: calc(9.2em + 48px);
+        padding: 8px 18px 10px;
         gap: 2px;
+        font-size: clamp(14px, 2vw, 20px);
     }
 
     .itemPopupIcon {
@@ -1437,8 +1481,9 @@ body {
     }
 
     .itemPopup {
-        font-size: 18px;
-        padding: 6px 18px 8px;
+        width: calc(9.2em + 40px);
+        font-size: 14px;
+        padding: 6px 14px 8px;
         gap: 2px;
     }
 

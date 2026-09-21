@@ -117,21 +117,23 @@
             <img class="cloudDecor cloudDecor--2" src="images/cloud2.svg" alt="" style="top:19%; width:9%; animation-duration:62s; animation-delay:-34s;">
         </div>
 
-        <!-- Roadside trees (2026-09-16 perspective pass): no longer four
-             fixed spots - now a continuous spawner, alternating left/right,
-             that plants a tree small near the hill crest and travels/grows
-             it down toward the bottom on the same road-perspective easing
-             as the signs, so the scenery itself reads as passing by rather
-             than sitting frozen while only the signs move. Populated and
-             animated entirely from JS - see the AMBIENT BACKGROUND MOTION
-             section in game.js. Empty on load; fills in immediately. -->
-        <div id="treeLayer" aria-hidden="true"></div>
-
-        <!-- Flowers + grass patches (2026-09-16 art breakdown): the same
-             travel-and-recycle spawner as the trees, just smaller and
-             scattered more loosely across the grass, sprinkled in as extra
-             ground detail passing by. Populated entirely from JS. -->
-        <div id="flowerLayer" aria-hidden="true"></div>
+        <!-- Roadside ambient scenery - trees, flowers/grass patches, and
+             the occasional billboard/credit union branch landmark - all
+             share this ONE layer (2026-09-21 depth-stacking fix). Each
+             piece still eases down the same perspective travel curve (see
+             AMBIENT BACKGROUND MOTION in game.js) and still gets its own
+             z-index set every frame from how far along its trip it is, but
+             that only sorts correctly against everything else if they're
+             all siblings under the same parent - three separate layer divs
+             (the original setup) each become their own stacking context,
+             so a whole layer added later in the DOM paints over an earlier
+             one's contents wholesale regardless of each piece's individual
+             depth, which is exactly what caused a small, distant tree to
+             render in front of a big, close landmark that was supposedly
+             behind it. One shared layer means one shared stacking order,
+             so depth always wins correctly no matter which spawner planted
+             which piece. Populated entirely from JS; empty on load. -->
+        <div id="ambientLayer" aria-hidden="true"></div>
 
         <!-- NEED and WANT travel down together each item, but which side
              each lands on is randomized per item (2026-09-16 difficulty
