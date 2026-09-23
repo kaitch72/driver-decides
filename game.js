@@ -749,6 +749,10 @@ function startTreeAmbience() {
 
 function spawnAmbientTree() {
 
+    if (ambientPaused) {
+        return;
+    }
+
     const isLeft = treeSpawnNextIsLeft;
     treeSpawnNextIsLeft = !treeSpawnNextIsLeft;
 
@@ -775,6 +779,15 @@ function spawnAmbientTree() {
 }
 
 function tickAmbientTrees(timestamp) {
+
+    // Frozen in place while paused (tutorial popups) - see
+    // pauseAmbientMotion(). The clock is shifted by the total paused time
+    // so everything picks up exactly where it stopped on resume.
+    if (ambientPaused) {
+        treeAnimFrame = requestAnimationFrame(tickAmbientTrees);
+        return;
+    }
+    timestamp -= ambientPausedTotalMs;
 
     for (let i = activeTrees.length - 1; i >= 0; i--) {
 
@@ -877,6 +890,10 @@ function startLandmarkAmbience() {
 
 function spawnAmbientLandmark() {
 
+    if (ambientPaused) {
+        return;
+    }
+
     const isLeft = landmarkSpawnNextIsLeft;
     landmarkSpawnNextIsLeft = !landmarkSpawnNextIsLeft;
 
@@ -903,6 +920,15 @@ function spawnAmbientLandmark() {
 }
 
 function tickAmbientLandmarks(timestamp) {
+
+    // Frozen in place while paused (tutorial popups) - see
+    // pauseAmbientMotion(). The clock is shifted by the total paused time
+    // so everything picks up exactly where it stopped on resume.
+    if (ambientPaused) {
+        landmarkAnimFrame = requestAnimationFrame(tickAmbientLandmarks);
+        return;
+    }
+    timestamp -= ambientPausedTotalMs;
 
     for (let i = activeLandmarks.length - 1; i >= 0; i--) {
 
@@ -976,6 +1002,10 @@ function startRoadStripeAmbience() {
 
 function spawnAmbientDash() {
 
+    if (ambientPaused) {
+        return;
+    }
+
     const el = document.createElement("div");
     el.className = "ambientDash";
     roadStripeLayer.appendChild(el);
@@ -984,6 +1014,15 @@ function spawnAmbientDash() {
 }
 
 function tickAmbientDashes(timestamp) {
+
+    // Frozen in place while paused (tutorial popups) - see
+    // pauseAmbientMotion(). The clock is shifted by the total paused time
+    // so everything picks up exactly where it stopped on resume.
+    if (ambientPaused) {
+        dashAnimFrame = requestAnimationFrame(tickAmbientDashes);
+        return;
+    }
+    timestamp -= ambientPausedTotalMs;
 
     for (let i = activeDashes.length - 1; i >= 0; i--) {
 
@@ -1086,24 +1125,41 @@ let groundScrollAnimFrame = null;
 
 function startGroundScrollAmbience() {
 
-    if (!groundScrollLayer || groundTilePool.length) {
+    // Guards on groundScrollAnimFrame now, not groundTilePool.length -
+    // placeStaticGroundTiles() (pre-game static grass, see below) already
+    // populates groundTilePool up front, so pool length alone can no
+    // longer tell "already animating" apart from "just statically drawn
+    // once and waiting." groundScrollAnimFrame only gets set once the RAF
+    // loop actually starts, which is the real "already running" signal.
+    if (!groundScrollLayer || groundScrollAnimFrame) {
         return;
     }
 
-    for (let i = 0; i < GROUND_TILE_POOL_SIZE; i++) {
-        // A div with the artwork as a CSS background (not an <img>), so a
-        // matching green background-color can sit directly behind it -
-        // see the note on GROUND_TILE_OVERLAP above for why.
-        const tile = document.createElement("div");
-        tile.className = "groundTile";
-        groundScrollLayer.appendChild(tile);
-        groundTilePool.push(tile);
+    if (!groundTilePool.length) {
+        for (let i = 0; i < GROUND_TILE_POOL_SIZE; i++) {
+            // A div with the artwork as a CSS background (not an <img>), so
+            // a matching green background-color can sit directly behind it
+            // - see the note on GROUND_TILE_OVERLAP above for why.
+            const tile = document.createElement("div");
+            tile.className = "groundTile";
+            groundScrollLayer.appendChild(tile);
+            groundTilePool.push(tile);
+        }
     }
 
     groundScrollAnimFrame = requestAnimationFrame(tickGroundScroll);
 }
 
 function tickGroundScroll(timestamp) {
+
+    // Frozen in place while paused (tutorial popups) - see
+    // pauseAmbientMotion(). The clock is shifted by the total paused time
+    // so everything picks up exactly where it stopped on resume.
+    if (ambientPaused) {
+        groundScrollAnimFrame = requestAnimationFrame(tickGroundScroll);
+        return;
+    }
+    timestamp -= ambientPausedTotalMs;
 
     if (groundScrollStartTime === null) {
         groundScrollStartTime = timestamp;
@@ -1202,6 +1258,10 @@ function startFlowerAmbience() {
 
 function spawnAmbientFlower() {
 
+    if (ambientPaused) {
+        return;
+    }
+
     const isLeft = flowerSpawnNextIsLeft;
     flowerSpawnNextIsLeft = !flowerSpawnNextIsLeft;
 
@@ -1227,6 +1287,15 @@ function spawnAmbientFlower() {
 }
 
 function tickAmbientFlowers(timestamp) {
+
+    // Frozen in place while paused (tutorial popups) - see
+    // pauseAmbientMotion(). The clock is shifted by the total paused time
+    // so everything picks up exactly where it stopped on resume.
+    if (ambientPaused) {
+        flowerAnimFrame = requestAnimationFrame(tickAmbientFlowers);
+        return;
+    }
+    timestamp -= ambientPausedTotalMs;
 
     for (let i = activeFlowers.length - 1; i >= 0; i--) {
 
@@ -1274,6 +1343,163 @@ function tickAmbientFlowers(timestamp) {
     }
 
     flowerAnimFrame = requestAnimationFrame(tickAmbientFlowers);
+}
+
+// --- Static pre-game GROUND (grass) tiles ---
+// Same idea as the trees/flowers below, for the ground-scroll layer
+// (see startGroundScrollAmbience/tickGroundScroll above) - that system
+// builds its whole tile pool lazily on first start, so leaving it fully
+// deferred left the grass band completely blank pre-game, not just
+// unmoving. This draws exactly what tickGroundScroll's own first frame
+// (elapsed === 0) would draw, using the SAME groundTilePool array -
+// startGroundScrollAmbience() sees tiles already in that pool and skips
+// straight to animating, and that first real tick is elapsed === 0 too,
+// so it recomputes this exact layout before advancing - no jump.
+function placeStaticGroundTiles() {
+
+    if (!groundScrollLayer || groundTilePool.length) {
+        return;
+    }
+
+    for (let i = 0; i < GROUND_TILE_POOL_SIZE; i++) {
+        const tile = document.createElement("div");
+        tile.className = "groundTile";
+        groundScrollLayer.appendChild(tile);
+        groundTilePool.push(tile);
+    }
+
+    let cursor = GROUND_BAND_TOP - GROUND_PATTERN_HEIGHT;
+    let typeIndex = 0;
+    let poolIndex = 0;
+
+    while (cursor < 100 && poolIndex < groundTilePool.length) {
+
+        const type = GROUND_TILE_TYPES[typeIndex % GROUND_TILE_TYPES.length];
+        const tileEl = groundTilePool[poolIndex];
+
+        tileEl.style.backgroundImage = 'url("' + type.src + '")';
+        tileEl.style.backgroundColor = type.color;
+        tileEl.dataset.src = type.src;
+        tileEl.style.display = "block";
+        tileEl.style.top = (cursor - GROUND_TILE_OVERLAP) + "%";
+        tileEl.style.height = (type.heightPct + GROUND_TILE_OVERLAP) + "%";
+
+        cursor += type.heightPct;
+        typeIndex++;
+        poolIndex++;
+    }
+
+    for (; poolIndex < groundTilePool.length; poolIndex++) {
+        groundTilePool[poolIndex].style.display = "none";
+    }
+}
+
+// --- Static pre-game scenery (2026-09-22, per Kayla) ---
+// The road shouldn't be bare while it's frozen behind the intro popup,
+// just not yet TRAVELING. This plants a handful of trees/flowers using
+// the exact same travel-curve math as the real spawners above (so they
+// land exactly where a real one would sit at that point in its trip,
+// same size/perspective) but as plain one-off elements, never pushed
+// into activeTrees/activeFlowers - so once the tick loops actually start
+// (beginRide()), they never touch these. beginRide() removes every
+// .staticScenery element at the same moment the real spawners take over,
+// so there's no seam where two versions of the same tree coexist.
+const STATIC_TREE_PROGRESS = [0.15, 0.42, 0.72];
+const STATIC_TREE_LEFT = [true, false, true];
+const STATIC_FLOWER_PROGRESS = [0.25, 0.5, 0.65, 0.85];
+const STATIC_FLOWER_LEFT = [false, true, false, true];
+
+// Evenly spaced trip-progress values for the frozen yellow center-line
+// dashes shown before motion starts (intro popup, first tutorial card) -
+// same spacing the live spawner produces (DASH_SPAWN_INTERVAL_MS apart
+// over DASH_TRAVEL_MS), so the road looks the same frozen or moving.
+const STATIC_DASH_COUNT = Math.floor(DASH_TRAVEL_MS / DASH_SPAWN_INTERVAL_MS);
+
+function placeStaticDashes() {
+
+    if (!roadStripeLayer) {
+        return;
+    }
+
+    for (let i = 0; i < STATIC_DASH_COUNT; i++) {
+        const progress = (i + 0.5) / STATIC_DASH_COUNT;
+        const eased = easeInPerspective(progress);
+        const el = document.createElement("div");
+        el.className = "ambientDash staticScenery";
+        el.dataset.progress = progress;
+        el.style.top = lerp(DASH_HORIZON_Y, DASH_GROUND_Y, eased) + "%";
+        el.style.width = lerp(DASH_WIDTH_FAR, DASH_WIDTH_NEAR, eased) + "%";
+        el.style.height = lerp(DASH_HEIGHT_FAR, DASH_HEIGHT_NEAR, eased) + "%";
+        roadStripeLayer.appendChild(el);
+    }
+}
+
+function placeStaticScenery() {
+
+    placeStaticGroundTiles();
+    placeStaticDashes();
+
+    if (!ambientLayer) {
+        return;
+    }
+
+    STATIC_TREE_PROGRESS.forEach(function (progress, i) {
+
+        const isLeft = STATIC_TREE_LEFT[i % STATIC_TREE_LEFT.length];
+        const eased = easeInPerspective(progress);
+
+        const y = lerp(TREE_HORIZON_Y, TREE_GROUND_Y, eased);
+        const outset = lerp(TREE_OUTSET_FAR, TREE_OUTSET_NEAR, eased) + TREE_JITTER_MAX * 0.4;
+        const x = treeLaneX(y, outset, isLeft);
+        const width = lerp(TREE_WIDTH_FAR, TREE_WIDTH_NEAR, eased);
+
+        const spot = document.createElement("div");
+        spot.className = "treeSpot staticScenery";
+        spot.style.left = x + "%";
+        spot.style.top = y + "%";
+        spot.style.width = width + "%";
+        spot.style.zIndex = Math.round(progress * 1000);
+
+        const img = document.createElement("img");
+        img.className = "treeDecor";
+        img.src = "images/tree.svg";
+        img.alt = "";
+        // No animationDuration/Delay set (unlike spawnAmbientTree) - these
+        // are meant to read as genuinely still, not gently swaying.
+
+        spot.appendChild(img);
+        ambientLayer.appendChild(spot);
+    });
+
+    STATIC_FLOWER_PROGRESS.forEach(function (progress, i) {
+
+        const isLeft = STATIC_FLOWER_LEFT[i % STATIC_FLOWER_LEFT.length];
+        const eased = easeInPerspective(progress);
+        const src = FLOWER_ASSETS[i % FLOWER_ASSETS.length];
+        const isPatch = src === PATCH_ASSET;
+
+        const y = lerp(FLOWER_HORIZON_Y, FLOWER_GROUND_Y, eased);
+        const width = isPatch
+            ? lerp(PATCH_WIDTH_FAR, PATCH_WIDTH_NEAR, eased)
+            : lerp(FLOWER_WIDTH_FAR, FLOWER_WIDTH_NEAR, eased);
+        const outset = Math.max(width / 2 + 1, lerp(FLOWER_OUTSET_FAR, FLOWER_OUTSET_NEAR, eased) + FLOWER_JITTER_MAX * 0.3);
+        const x = treeLaneX(y, outset, isLeft);
+
+        const spot = document.createElement("div");
+        spot.className = "flowerSpot staticScenery";
+        spot.style.left = x + "%";
+        spot.style.top = y + "%";
+        spot.style.width = width + "%";
+        spot.style.zIndex = Math.round(progress * 1000);
+
+        const img = document.createElement("img");
+        img.className = "flowerDecor";
+        img.src = src;
+        img.alt = "";
+
+        spot.appendChild(img);
+        ambientLayer.appendChild(spot);
+    });
 }
 
 
@@ -1516,14 +1742,27 @@ const STAR_ARC_LIFT_MAX = 90;
 // the DOM (the scooter, nested deep in #roadScene; the dollars card, a
 // sibling of it) still be positioned against one shared, simple
 // coordinate space (referenceEl's own box).
+// How much an element is currently scaled on screen. #game is a fixed
+// 1920x1080 stage shrunk to fit the window with transform: scale(), so
+// getBoundingClientRect() returns on-screen (scaled) pixels while
+// style.left/top inside #game are in unscaled stage pixels. Dividing by
+// this converts one into the other (2026-09-23 fix: without it, the
+// tutorial spotlight and the star flight landed up-and-left of their
+// targets on any window narrower than 1920px).
+function screenScaleOf(el) {
+    const rect = el.getBoundingClientRect();
+    return (el.offsetWidth && rect.width) ? rect.width / el.offsetWidth : 1;
+}
+
 function centerRelativeTo(el, referenceEl) {
 
     const rect = el.getBoundingClientRect();
     const refRect = referenceEl.getBoundingClientRect();
+    const s = screenScaleOf(referenceEl);
 
     return {
-        x: rect.left + rect.width / 2 - refRect.left,
-        y: rect.top + rect.height / 2 - refRect.top
+        x: (rect.left + rect.width / 2 - refRect.left) / s,
+        y: (rect.top + rect.height / 2 - refRect.top) / s
     };
 }
 
@@ -1816,7 +2055,142 @@ function clearFeedback() {
 
 /* ================= RESET ================= */
 
+/* ================= START / PAUSE / RESUME AMBIENT MOTION (2026-09-23, per Kayla) =================
+   The moving background (ground, trees, flowers, landmarks, yellow road
+   dashes, sun/cloud CSS animations) now also runs during the tutorial,
+   but freezes while a tutorial popup card is up and picks up exactly
+   where it left off once the player is acting again:
+   - Next on the first card -> starts/resumes (signs roll forward)
+   - second card appears -> pauses
+   - "Try It!" -> resumes (practice catch), then the real game carries on.
+   Pausing keeps every rAF loop alive but skips its update, blocks new
+   spawns, and shifts each loop's clock by the total paused time
+   (ambientPausedTotalMs) so nothing jumps on resume. */
+let ambientPaused = false;
+let ambientPauseStartedAt = null;
+let ambientPausedTotalMs = 0;
+
+// Swap the frozen pre-game scenery for the live spawners (each start*
+// function no-ops if its system is already running).
+function startAmbientMotion() {
+
+    // The frozen yellow dashes just start moving from where they sit
+    // (handed to the live dash loop with a back-dated start time matching
+    // their spot on the road) instead of being removed, so the center line
+    // never goes briefly bare near the scooter when motion begins.
+    const handoffNow = performance.now() - ambientPausedTotalMs;
+    document.querySelectorAll("#roadStripeLayer .ambientDash.staticScenery").forEach(function (el) {
+        const progress = parseFloat(el.dataset.progress);
+        el.classList.remove("staticScenery");
+        if (isNaN(progress)) {
+            el.remove();
+            return;
+        }
+        activeDashes.push({ el, startTime: handoffNow - progress * DASH_TRAVEL_MS });
+    });
+
+    document.querySelectorAll(".staticScenery").forEach(function (el) {
+        el.remove();
+    });
+
+    startGroundScrollAmbience();
+    startTreeAmbience();
+    startFlowerAmbience();
+    startLandmarkAmbience();
+    startRoadStripeAmbience();
+
+    if (game) {
+        game.classList.add("riding");
+    }
+}
+
+function pauseAmbientMotion() {
+
+    if (ambientPaused) {
+        return;
+    }
+
+    ambientPaused = true;
+    ambientPauseStartedAt = performance.now();
+
+    if (game) {
+        game.classList.remove("riding");
+    }
+}
+
+function resumeAmbientMotion() {
+
+    if (!ambientPaused) {
+        return;
+    }
+
+    ambientPausedTotalMs += performance.now() - ambientPauseStartedAt;
+    ambientPaused = false;
+    ambientPauseStartedAt = null;
+
+    if (game) {
+        game.classList.add("riding");
+    }
+}
+
+/* ================= STOP AMBIENT MOTION (2026-09-23, per Kayla) =================
+   Restart brings back the intro popup, and the background should be
+   still behind it again - exactly like a fresh page load - until Start is
+   pressed. Stops all five ambient systems (ground scroll, trees, flowers,
+   landmarks, road-center dashes), removes everything they had in flight,
+   re-lays the same frozen pre-game scenery the page shows on load
+   (placeStaticScenery), and takes the "riding" class back off #game so
+   the sun pulse / cloud drift CSS animations pause again. beginRide()
+   restarts all of it on Start, since each start*Ambience() guard is
+   cleared here. */
+function stopAmbientMotion() {
+
+    [treeSpawnTimer, flowerSpawnTimer, landmarkSpawnTimer, dashSpawnTimer]
+        .forEach(function (t) { if (t) { clearInterval(t); } });
+    treeSpawnTimer = null;
+    flowerSpawnTimer = null;
+    landmarkSpawnTimer = null;
+    dashSpawnTimer = null;
+
+    [treeAnimFrame, flowerAnimFrame, landmarkAnimFrame, dashAnimFrame, groundScrollAnimFrame]
+        .forEach(function (f) { if (f) { cancelAnimationFrame(f); } });
+    treeAnimFrame = null;
+    flowerAnimFrame = null;
+    landmarkAnimFrame = null;
+    dashAnimFrame = null;
+    groundScrollAnimFrame = null;
+    groundScrollStartTime = null;
+
+    ambientPaused = false;
+    ambientPauseStartedAt = null;
+    ambientPausedTotalMs = 0;
+
+    [activeTrees, activeFlowers, activeLandmarks, activeDashes].forEach(function (list) {
+        list.forEach(function (item) { if (item.el) { item.el.remove(); } });
+    });
+    activeTrees = [];
+    activeFlowers = [];
+    activeLandmarks = [];
+    activeDashes = [];
+
+    // Rebuild the ground tiles and the static trees/flowers from scratch,
+    // same as page load (placeStaticGroundTiles only lays tiles out when
+    // the pool is empty).
+    groundTilePool.forEach(function (tile) { tile.remove(); });
+    groundTilePool = [];
+    document.querySelectorAll(".staticScenery").forEach(function (el) {
+        el.remove();
+    });
+    placeStaticScenery();
+
+    if (game) {
+        game.classList.remove("riding");
+    }
+}
+
 function resetGame() {
+
+    stopAmbientMotion();
 
     gameRunning = false;
     isTutorialDemo = false;
@@ -1868,6 +2242,21 @@ function beginRide() {
     if (finishScreen) {
         finishScreen.style.display = "none";
     }
+
+    // Ambient road motion (scrolling ground, trees, flowers, center-line
+    // dashes) starts here instead of at page load (2026-09-22, per Kayla:
+    // "no need for motion during the intro popup") - the first real call
+    // is the one that matters (Start button -> startRealGame -> here);
+    // beginRide() also runs again at the top of every later round via
+    // startNextRound(), but each start*Ambience() function already
+    // no-ops on a repeat call (see their own already-running guards), so
+    // calling them again here every round is harmless.
+    // The static pre-game trees/flowers (placeStaticScenery(), called
+    // once at page load) hand off to the real spawners right here - the
+    // querySelectorAll is cheap and a no-op on every later round, since
+    // nothing with this class exists after the first call removes it.
+    resumeAmbientMotion();
+    startAmbientMotion();
 
     stopItemLoop();
     clearFeedback();
@@ -1960,7 +2349,10 @@ const TUTORIAL_STEPS = [
         title: "Road Signs",
         body: "Road signs will appear with everyday items.",
         nextLabel: "Next",
-        side: "right"
+        // Sits right beside the highlighted item popup, on its right
+        // (2026-09-23, per Kayla) - placed in JS once the spotlight is
+        // measured, see placeTutorialCardBesideSpotlight().
+        side: "besideRight"
     },
     {
         title: "Need or Want?",
@@ -1994,12 +2386,13 @@ function positionSpotlight(targetEl, padPx) {
 
     const gameRect = game.getBoundingClientRect();
     const targetRect = targetEl.getBoundingClientRect();
+    const s = screenScaleOf(game);
 
     positionSpotlightRect({
-        left: targetRect.left - gameRect.left,
-        top: targetRect.top - gameRect.top,
-        width: targetRect.width,
-        height: targetRect.height
+        left: (targetRect.left - gameRect.left) / s,
+        top: (targetRect.top - gameRect.top) / s,
+        width: targetRect.width / s,
+        height: targetRect.height / s
     }, padPx);
 }
 
@@ -2021,11 +2414,13 @@ function positionSpotlightOnSigns(padPx) {
     const right = Math.max(needRect.right, wantRect.right);
     const bottom = Math.max(needRect.bottom, wantRect.bottom);
 
+    const s = screenScaleOf(game);
+
     positionSpotlightRect({
-        left: left - gameRect.left,
-        top: top - gameRect.top,
-        width: right - left,
-        height: bottom - top
+        left: (left - gameRect.left) / s,
+        top: (top - gameRect.top) / s,
+        width: (right - left) / s,
+        height: (bottom - top) / s
     }, padPx);
 }
 
@@ -2042,6 +2437,35 @@ function positionSpotlightRect(rect, padPx) {
     tutorialSpotlight.style.width = (rect.width + pad * 2) + "px";
     tutorialSpotlight.style.height = (rect.height + pad * 2) + "px";
     tutorialSpotlight.classList.add("show");
+
+    placeTutorialCardBesideSpotlight();
+}
+
+// Gap (stage px) between the spotlight's right edge and the tutorial card
+// on steps whose side is "besideRight".
+const TUTORIAL_CARD_BESIDE_GAP = 28;
+
+// For "besideRight" steps: puts the tutorial card just to the right of
+// the spotlight cutout, vertically centered on it, and only reveals the
+// card once it's in place (so it never flashes at the old right-edge
+// spot first). Other steps keep their CSS left/right edge placement.
+function placeTutorialCardBesideSpotlight() {
+
+    const step = TUTORIAL_STEPS[tutorialStepIndex];
+
+    if (!tutorialCard || !tutorialSpotlight || !step || step.side !== "besideRight") {
+        return;
+    }
+
+    const spotLeft = parseFloat(tutorialSpotlight.style.left) || 0;
+    const spotTop = parseFloat(tutorialSpotlight.style.top) || 0;
+    const spotWidth = parseFloat(tutorialSpotlight.style.width) || 0;
+    const spotHeight = parseFloat(tutorialSpotlight.style.height) || 0;
+
+    tutorialCard.style.left = (spotLeft + spotWidth + TUTORIAL_CARD_BESIDE_GAP) + "px";
+    tutorialCard.style.right = "auto";
+    tutorialCard.style.top = (spotTop + spotHeight / 2) + "px";
+    tutorialCard.style.visibility = "visible";
 }
 
 function hideSpotlight() {
@@ -2100,6 +2524,9 @@ function showTutorialStep(index) {
 
     tutorialStepIndex = index;
 
+    // Background freezes behind every tutorial popup card.
+    pauseAmbientMotion();
+
     const step = TUTORIAL_STEPS[index];
 
     if (tutorialTitle) {
@@ -2117,6 +2544,15 @@ function showTutorialStep(index) {
     if (tutorialCard) {
         tutorialCard.classList.toggle("tutorialCard--right", step.side === "right");
         tutorialCard.classList.toggle("tutorialCard--left", step.side === "left");
+
+        // Clear any beside-the-spotlight placement from a previous step so
+        // the CSS left/right classes above take over again; a
+        // "besideRight" step stays hidden until the spotlight is measured
+        // and placeTutorialCardBesideSpotlight() moves it into place.
+        tutorialCard.style.left = "";
+        tutorialCard.style.right = "";
+        tutorialCard.style.top = "";
+        tutorialCard.style.visibility = step.side === "besideRight" ? "hidden" : "";
     }
 
     if (tutorialScreen) {
@@ -2181,6 +2617,10 @@ function onDemoItemPopupSettled() {
 // halfway point, then freeze them and bring up step 2's popup right
 // beside them.
 function advanceToTutorialStep1() {
+
+    // Player pressed Next - the road comes alive while the signs roll in.
+    resumeAmbientMotion();
+    startAmbientMotion();
 
     hideSpotlight();
 
@@ -2250,6 +2690,9 @@ function stopTutorialTravel() {
 // that re-rolls needIsOnLeftThisItem, which would make the already-
 // paused signs jump to the other side instead of continuing smoothly.
 function beginTutorialDemoCatch() {
+
+    // "Try It!" - the player is steering now, so the road moves again.
+    resumeAmbientMotion();
 
     hideSpotlight();
 
@@ -2328,13 +2771,13 @@ if (finishScreen) {
 }
 
 // Ambient road motion (scrolling ground, trees, flowers, center-line
-// dashes) - runs forever from here, independent of game/round state. See
-// AMBIENT BACKGROUND MOTION.
-startGroundScrollAmbience();
-startTreeAmbience();
-startFlowerAmbience();
-startLandmarkAmbience();
-startRoadStripeAmbience();
+// dashes) - held off until the player actually starts riding (see
+// beginRide() below), per Kayla: no motion behind the intro popup.
+// AMBIENT BACKGROUND MOTION. A handful of trees/flowers are still placed
+// up front so the road doesn't look bare while it's frozen - see
+// placeStaticScenery() near AMBIENT BACKGROUND MOTION - just not moving
+// yet.
+placeStaticScenery();
 
 // Kiosk auto-launch: the home screen can open this page with ?tutorial=1
 // appended to its URL. When that's present, this is a fresh arrival from

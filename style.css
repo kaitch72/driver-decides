@@ -23,6 +23,13 @@
     --wrong-red:     #E0293E;
 
     --font-brand: "Inter", Arial, Helvetica, sans-serif;
+
+    /* Fixed stage the whole game is laid out at, then uniformly scaled to
+       fit the window as one unit (see #game below) - same convention as
+       Lemonade Stand/Coin Catch, so nothing inside #game needs its own
+       vw/cqw scaling math; it's all plain px authored for this stage. */
+    --stage-width: 1920px;
+    --stage-height: 1080px;
 }
 
 * {
@@ -53,10 +60,26 @@ body {
    grey on the other axis, rather than always leaving a margin. */
 #game {
     position: relative;
-    width: min(100%, calc(100vh * 16 / 9));
-    aspect-ratio: 16 / 9;
-    max-width: 1920px;
-    max-height: 100%;
+    flex-shrink: 0;
+    width: var(--stage-width);
+    height: var(--stage-height);
+
+    /* Scale the fixed 1920x1080 stage to fit whatever window/screen it's
+       shown in, without ever blowing it up past 100% - the whole game
+       (text, icons, spacing, all of it) shrinks and grows together as
+       one image, same as Lemonade Stand/Coin Catch. Everything inside
+       #game goes back to plain px authored for this stage - no more
+       vw/cqw/clamp() per element, which is what kept drifting out of
+       sync with the card at different window sizes. */
+    transform:
+        scale(
+            min(
+                1,
+                calc(100vw / var(--stage-width)),
+                calc(100vh / var(--stage-height))
+            )
+        );
+
     overflow: hidden;
     border-radius: 28px;
     box-shadow: 0 24px 60px rgba(10, 23, 36, 0.28);
@@ -94,7 +117,7 @@ body {
 
 #gameTitle {
     justify-self: center;
-    font-size: clamp(18px, 2vw, 26px);
+    font-size: 34px;
     font-weight: 800;
     color: var(--blue-black);
     line-height: 1;
@@ -102,10 +125,10 @@ body {
 }
 
 .iconButton {
-    width: 36px;
-    height: 36px;
+    width: 50px;
+    height: 50px;
     border-radius: 50%;
-    border: 2px solid var(--persian-blue);
+    border: 3px solid var(--persian-blue);
     background: var(--white);
     display: flex;
     align-items: center;
@@ -119,8 +142,8 @@ body {
 }
 
 .reset-icon {
-    width: 18px;
-    height: 18px;
+    width: 24px;
+    height: 24px;
     fill: var(--persian-blue);
 }
 
@@ -336,6 +359,20 @@ body {
     animation-iteration-count: infinite;
 }
 
+/* Paused until the player actually starts riding (2026-09-22, per Kayla:
+   no motion behind the intro popup) - #game only gets the "riding" class
+   in beginRide() (see game.js), same trigger point the JS-driven ambient
+   road motion (ground/trees/flowers/dashes) now waits for too. */
+.sunDecor,
+.cloudDecor {
+    animation-play-state: paused;
+}
+
+#game.riding .sunDecor,
+#game.riding .cloudDecor {
+    animation-play-state: running;
+}
+
 @keyframes cloudDrift {
     0% { left: -25%; }
     100% { left: 110%; }
@@ -490,7 +527,7 @@ body {
 
     font-family: var(--font-brand);
     font-weight: 800;
-    font-size: clamp(16px, 2.1vw, 28px);
+    font-size: 28px;
     letter-spacing: 0.5px;
     text-align: center;
     white-space: nowrap;
@@ -628,7 +665,7 @@ body {
 
     font-family: var(--font-brand);
     font-weight: 800;
-    font-size: clamp(15px, 2.1vw, 27px);
+    font-size: 27px;
     color: var(--blue-black);
     text-align: center;
 
@@ -637,8 +674,8 @@ body {
 }
 
 .itemPopupIcon {
-    width: clamp(40px, 5.5vw, 72px);
-    height: clamp(40px, 5.5vw, 72px);
+    width: 72px;
+    height: 72px;
     object-fit: contain;
 }
 
@@ -720,8 +757,8 @@ body {
     position: absolute;
     pointer-events: none;
 
-    width: clamp(16px, 1.8vw, 26px);
-    height: clamp(16px, 1.8vw, 26px);
+    width: 26px;
+    height: 26px;
 
     will-change: top, left, transform, opacity;
 }
@@ -773,7 +810,7 @@ body {
 
 .scooter-img {
     display: block;
-    width: clamp(80px, 9vw, 150px);
+    width: 150px;
     height: auto;
     filter: drop-shadow(0 10px 12px rgba(10, 23, 36, 0.35));
     user-select: none;
@@ -799,8 +836,8 @@ body {
 
 .starsBox {
     background: var(--white);
-    border-radius: 16px;
-    padding: 12px 18px;
+    border-radius: 20px;
+    padding: 18px 26px;
     box-shadow: 0 5px 10px rgba(10, 23, 36, 0.14);
     font-weight: bold;
 
@@ -812,8 +849,8 @@ body {
 .statLabel {
     display: flex;
     align-items: center;
-    gap: 6px;
-    font-size: clamp(12px, 1vw, 15px);
+    gap: 7px;
+    font-size: 17px;
     font-weight: 700;
     letter-spacing: 0.5px;
     text-transform: uppercase;
@@ -821,21 +858,21 @@ body {
 }
 
 .mini-icon {
-    width: 16px;
-    height: 16px;
+    width: 19px;
+    height: 19px;
     fill: var(--persian-blue);
     flex-shrink: 0;
 }
 
 .statValue {
     display: block;
-    margin-top: 5px;
-    font-size: clamp(20px, 2vw, 32px);
+    margin-top: 6px;
+    font-size: 40px;
     color: var(--blue-black);
 }
 
 .starsBox {
-    min-width: 190px;
+    min-width: 230px;
 }
 
 
@@ -901,12 +938,15 @@ body {
     position: relative;
     overflow: hidden;
 
-    width: min(480px, 90vw);
+    width: 640px;
+
+    display: flex;
+    flex-direction: column;
 
     background: var(--white);
     border-radius: 32px;
 
-    padding: clamp(32px, 4vw, 48px) clamp(28px, 3.4vw, 40px) clamp(28px, 3vw, 36px);
+    padding: 48px 40px 36px;
 
     text-align: center;
 
@@ -916,10 +956,10 @@ body {
 .startCard::before {
     content: "";
     position: absolute;
-    top: -60px;
-    right: -60px;
-    width: 170px;
-    height: 170px;
+    top: -88px;
+    right: -88px;
+    width: 250px;
+    height: 250px;
     border-radius: 50%;
     background: var(--hawkes-blue);
     z-index: 0;
@@ -928,10 +968,10 @@ body {
 .startCard::after {
     content: "";
     position: absolute;
-    bottom: -66px;
-    left: -46px;
-    width: 130px;
-    height: 130px;
+    bottom: -76px;
+    left: -53px;
+    width: 150px;
+    height: 150px;
     border-radius: 50%;
     background: var(--hawkes-blue);
     opacity: 0.7;
@@ -951,7 +991,64 @@ body {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 14px;
+    gap: 26px;
+}
+
+/* Start/Tutorial share one equal-weight "bar" width and height now
+   (2026-09-22 cohesive intro screen pass) - only scoped to the start
+   screen so the tutorial Next / finish Play Again buttons elsewhere
+   keep their own sizing. Plain px like the rest of the card (2026-09-22
+   follow-up, switch to Lemonade Stand's fixed-stage + transform: scale()
+   pattern on #game) - comfortably fits under the badge/title/lead text
+   inside the card's fixed 648px height with room to spare. */
+.startActions .brandButton,
+.startActions .brandButton--secondary {
+    width: 192px;
+    padding: 18px 32px;
+    font-size: 30px;
+}
+
+/* Start/Tutorial now styled exactly like Lemonade Stand's intro popup
+   buttons (2026-09-23, per Kayla) -- same 192px width as before, fixed
+   70px height, 0 side padding (so the width alone sets the size),
+   18px radius, 30px/800 label on one line, 5px offset shadows: Start =
+   Hawkes Blue (#D7E7FF), Tutorial = the darker 0.22 grey. Hover lift
+   matches Lemonade's -2px. Scoped to .startActions only. */
+.startActions .brandButton,
+.startActions .brandButton--secondary {
+    box-sizing: border-box;
+    width: 192px;
+    height: 70px;
+    padding: 18px 0;
+    border-radius: 18px;
+    font-size: 30px;
+    font-weight: 800;
+    line-height: 1;
+    white-space: nowrap;
+    box-shadow: 0 5px 0 var(--hawkes-blue);
+}
+
+.startActions .brandButton:hover:not(:disabled) {
+    transform: translateY(-2px);
+}
+
+.startActions .brandButton:active:not(:disabled) {
+    transform: translateY(3px);
+    box-shadow: 0 2px 0 var(--hawkes-blue);
+}
+
+.startActions .brandButton--secondary {
+    background: var(--mystic);
+    color: var(--blue-black);
+    box-shadow: 0 5px 0 rgba(10, 23, 36, 0.22);
+}
+
+.startActions .brandButton--secondary:hover:not(:disabled) {
+    background: var(--mystic);
+}
+
+.startActions .brandButton--secondary:active:not(:disabled) {
+    box-shadow: 0 2px 0 rgba(10, 23, 36, 0.22);
 }
 
 
@@ -966,17 +1063,25 @@ body {
     position: relative;
     z-index: 1;
 
-    width: clamp(84px, 9vw, 112px);
-    height: clamp(84px, 9vw, 112px);
+    /* .startCard is now a fixed-height flex column (2026-09-22 card
+       sizing pass) - without this, flexbox's default flex-shrink:1 was
+       free to compress the badge's HEIGHT to help fit everything in the
+       fixed card height, while its width (not a flex-shrink target in a
+       column layout) stayed put, squashing the circle into an oval.
+       aspect-ratio backs up the fix so height always follows width
+       exactly no matter what. */
+    flex-shrink: 0;
+    width: 125px;
+    aspect-ratio: 1 / 1;
 
-    margin: 0 auto clamp(18px, 2.2vw, 26px);
+    margin: 0 auto 26px;
 
     animation: startBadgeFloat 3.2s ease-in-out infinite;
 }
 
 .start-badge-wrap--photo {
-    width: clamp(96px, 11vw, 140px);
-    height: clamp(96px, 11vw, 140px);
+    width: 140px;
+    height: 140px;
 }
 
 .start-badge {
@@ -1035,7 +1140,6 @@ body {
     left: -10px;
     width: 22px;
     height: 22px;
-    fill: var(--blue-bird);
 }
 
 .start-sparkle--b {
@@ -1043,7 +1147,6 @@ body {
     right: -8px;
     width: 16px;
     height: 16px;
-    fill: var(--malibu);
     animation-delay: 0.5s;
 }
 
@@ -1056,8 +1159,8 @@ body {
     position: relative;
     overflow: hidden;
 
-    width: min(640px, 88vw);
-    max-height: 94vh;
+    width: 640px;
+    max-height: 1015px;
     overflow-y: auto;
 
     background: linear-gradient(160deg, var(--blue-black) 0%, var(--persian-blue) 100%);
@@ -1087,11 +1190,12 @@ body {
 }
 
 .startCard h1 {
-    font-size: clamp(26px, 3vw, 34px);
+    font-size: 36px;
     font-weight: 800;
     color: var(--blue-black);
     margin: 0 0 14px;
     letter-spacing: -0.01em;
+    line-height: 50px;
 }
 
 .finishCard h1 {
@@ -1099,7 +1203,7 @@ body {
     align-items: center;
     justify-content: center;
     gap: 14px;
-    font-size: clamp(34px, 4vw, 52px);
+    font-size: 52px;
     font-weight: 800;
     color: var(--white);
     margin: 0 0 12px;
@@ -1113,7 +1217,7 @@ body {
 }
 
 .startCard p {
-    font-size: clamp(14px, 1.3vw, 16px);
+    font-size: 20px;
     font-weight: 400;
     color: rgba(10, 23, 36, 0.68);
     line-height: 1.5;
@@ -1121,7 +1225,7 @@ body {
 
 .results-message {
     margin: 0 0 4px;
-    font-size: clamp(17px, 1.8vw, 24px);
+    font-size: 24px;
     font-weight: 500;
     color: var(--hawkes-blue);
     line-height: 1.35;
@@ -1131,7 +1235,7 @@ body {
     display: flex;
     align-items: flex-start;
     justify-content: center;
-    gap: clamp(28px, 5.5vw, 56px);
+    gap: 56px;
     margin-top: 2px;
     margin-bottom: 26px;
 }
@@ -1143,7 +1247,7 @@ body {
 }
 
 .stat-number {
-    font-size: clamp(38px, 5.2vw, 60px);
+    font-size: 60px;
     font-weight: 800;
     color: var(--sky-blue);
     line-height: 1;
@@ -1152,7 +1256,7 @@ body {
 
 .stat-label {
     margin-top: 4px;
-    font-size: clamp(12px, 1.2vw, 16px);
+    font-size: 16px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -1160,8 +1264,8 @@ body {
 }
 
 .introLead {
-    max-width: 340px;
-    margin: 0 auto clamp(22px, 2.6vw, 30px);
+    max-width: 480px;
+    margin: 0 auto 30px;
 }
 
 
@@ -1193,8 +1297,8 @@ body {
    a flat icon) - sized and placed to match the results-sparkles above it. */
 
 .finish-badge-wrap {
-    width: clamp(70px, 7.5vw, 96px);
-    height: clamp(70px, 7.5vw, 96px);
+    width: 96px;
+    height: 96px;
     margin: 0 auto 14px;
 }
 
@@ -1224,7 +1328,7 @@ body {
 /* ================= ROUND LABEL (finish screen) ================= */
 
 .round-label {
-    font-size: clamp(13px, 1.3vw, 17px);
+    font-size: 17px;
     font-weight: 800;
     letter-spacing: 0.8px;
     text-transform: uppercase;
@@ -1250,7 +1354,7 @@ body {
     color: var(--white);
 
     font-family: var(--font-brand);
-    font-size: clamp(20px, 2.2vw, 30px);
+    font-size: 30px;
     font-weight: 800;
 
     cursor: pointer;
@@ -1294,7 +1398,7 @@ body {
     color: var(--blue-black);
     box-shadow: 0 6px 0 rgba(10, 23, 36, 0.12);
     padding: 14px 42px;
-    font-size: clamp(16px, 1.8vw, 22px);
+    font-size: 22px;
 }
 
 .brandButton--secondary:hover:not(:disabled) {
@@ -1323,12 +1427,12 @@ body {
     transform: translateY(-50%);
     pointer-events: auto;
 
-    width: min(420px, 88vw);
+    width: 420px;
 
     background: var(--white);
     border-radius: 26px;
 
-    padding: clamp(22px, 2.8vw, 30px);
+    padding: 30px;
 
     text-align: left;
 
@@ -1358,7 +1462,7 @@ body {
 
 .tutorialTitle {
     margin: 0;
-    font-size: clamp(19px, 2.2vw, 25px);
+    font-size: 25px;
     font-weight: 800;
     color: var(--persian-blue);
 }
@@ -1395,7 +1499,7 @@ body {
 
 .tutorialBody {
     margin: 0 0 24px;
-    font-size: clamp(14px, 1.5vw, 17px);
+    font-size: 17px;
     font-weight: 400;
     line-height: 1.5;
     color: rgba(10, 23, 36, 0.72);
@@ -1406,89 +1510,227 @@ body {
    under the body text, not spanning the card. */
 .tutorialCard .brandButton {
     padding: 13px 28px;
-    font-size: clamp(15px, 1.6vw, 18px);
+    font-size: 18px;
 }
 
 
-/* ================= RESPONSIVE ================= */
-
-@media (max-width: 900px) {
-
-    #topBar {
-        gap: 10px;
-        padding: 0 12px;
-    }
-
-    #hud {
-        top: calc(100% / 12 + 10px);
-        gap: 7px;
-    }
-
-    .starsBox {
-        padding: 8px 10px;
-        border-radius: 10px;
-        min-width: 90px;
-    }
-
-    .startCard,
-    .finishCard,
-    .tutorialCard {
-        padding: 25px;
-    }
-
-    .itemPopup {
-        width: calc(9.2em + 48px);
-        padding: 8px 18px 10px;
-        gap: 2px;
-        font-size: clamp(14px, 2vw, 20px);
-    }
-
-    .itemPopupIcon {
-        width: clamp(30px, 5vw, 52px);
-        height: clamp(30px, 5vw, 52px);
-    }
-
-    .roadSign {
-        padding: 10px 16px;
-    }
+/* ================= FINISH POPUP (2026-09-23, per Kayla) =================
+   Laid out exactly like Coin Catch's end-of-game results popup:
+   - Card: 640px wide (same as the intro .startCard), height auto,
+     padding 45px 50px 40px (Coin Catch's).
+   - Stars row -> white trophy (77px glyph in a 110px slot, no circle),
+     same spacing as Coin Catch (10px under the stars, 14px under the
+     slot).
+   - "Great Job!" = Coin Catch's h1 (48px / 800 / white).
+   - "Round X of 4", the summary line and the correct/missed labels =
+     Coin Catch's "You caught:" text (22px / 500 / Hawkes Blue).
+   - The two numbers = Coin Catch's dollar amount (60px / 800 / Malibu).
+   - Button: same size as the intro Start button (192x70), white with
+     Persian Blue text and a Hawkes Blue lip, no icon -- identical to
+     Coin Catch's Play Again. */
+.finishCard {
+    width: 640px;
+    padding: 45px 50px 40px;
+    border-radius: 35px;
 }
 
-@media (max-width: 650px) {
+.finishCard .results-sparkles {
+    gap: 14px;
+    margin-bottom: 10px;
+}
 
-    #gameTitle {
-        display: none;
-    }
+.finishCard .sparkle-icon {
+    width: 20px;
+    height: 20px;
+    fill: var(--malibu);
+}
 
-    .startCard,
-    .finishCard,
-    .tutorialCard {
-        width: 94vw;
-    }
+.finishCard .sparkle-icon--big {
+    width: 26px;
+    height: 26px;
+}
 
-    /* Too little room to pin the tutorial card beside its spotlight
-       without it hanging off the edge - fall back to centered, like the
-       start/finish cards, at this width. */
-    .tutorialCard--left,
-    .tutorialCard--right {
-        left: 50%;
-        right: auto;
-        transform: translate(-50%, -50%);
-    }
+/* 77px trophy centered in a 110px-tall slot, like Coin Catch's
+   .results-trophy / .piggy-badge--results (16.5px above and below the
+   glyph, then the slot's own 14px bottom margin). */
+.finishCard .finish-trophy-top {
+    display: block;
+    width: 77px;
+    height: 77px;
+    /* 26.5px on top: its margin collapses with the stars row's 10px
+       margin-bottom, so this alone sets the gap -- 10px + 16.5px, the
+       same stars-to-trophy distance as Coin Catch. */
+    margin: 26.5px auto 30.5px;
+    fill: var(--white);
+    filter: none;
+}
 
-    .roadSign {
-        font-size: 14px;
-        padding: 6px 14px;
-    }
+.finishCard h1 {
+    gap: 14px;
+    margin: 0 0 12px;
+    font-size: 48px;
+    font-weight: 800;
+    line-height: normal;
+    color: var(--white);
+}
 
-    .itemPopup {
-        width: calc(9.2em + 40px);
-        font-size: 14px;
-        padding: 6px 14px 8px;
-        gap: 2px;
-    }
+.finishCard .round-label,
+.finishCard .results-message,
+.finishCard .stat-label {
+    margin: 8px 0;
+    font-size: 22px;
+    font-weight: 500;
+    letter-spacing: normal;
+    line-height: normal;
+    text-transform: none;
+    color: var(--hawkes-blue);
+}
 
-    .itemPopupIcon {
-        width: 28px;
-        height: 28px;
-    }
+/* Labels read "Correct" / "Missed" (sentence case, like Coin Catch's
+   text) now that the all-caps treatment is gone. */
+.finishCard .stat-label {
+    margin: 4px 0 0;
+    text-transform: capitalize;
+}
+
+/* The summary line is empty on every round except the last; hide it
+   then so its margins don't add a gap. */
+.finishCard .results-message:empty {
+    /* !important because finishGame() sets style.display = "block". */
+    display: none !important;
+}
+
+.finishCard .stat-row {
+    margin: 14px 0;
+}
+
+.finishCard .stat-number {
+    font-size: 60px;
+    font-weight: 800;
+    line-height: normal;
+    letter-spacing: normal;
+    color: var(--malibu);
+}
+
+#playAgainButton {
+    box-sizing: border-box;
+    width: 192px;
+    height: 70px;
+    margin-top: 18px;
+    padding: 18px 0;
+    gap: 0;
+    border: none;
+    border-radius: 18px;
+    background: var(--white);
+    color: var(--persian-blue);
+    font-family: var(--font-brand);
+    font-size: 30px;
+    font-weight: 800;
+    line-height: 1;
+    white-space: nowrap;
+    box-shadow: 0 5px 0 var(--hawkes-blue);
+}
+
+#playAgainButton:hover:not(:disabled) {
+    transform: translateY(-2px);
+    background: var(--onahau);
+}
+
+#playAgainButton:active:not(:disabled) {
+    transform: translateY(3px);
+    box-shadow: 0 2px 0 var(--hawkes-blue);
+}
+
+
+/* ================= DOLLARS CARD (2026-09-23, per Kayla) =================
+   Matched to Coin Catch's SAVED card: no fixed/min width (sizes to its
+   content), 14px 28px padding, 16px radius, 1.5px Hawkes Blue border,
+   soft 0 2px 6px shadow, label + value stacked 8px apart and
+   right-aligned, 17px/700 label with 1.8px tracking and a 20px icon,
+   46px/800 dollar amount. Position on screen is unchanged. */
+.starsBox {
+    min-width: 0;
+    padding: 14px 28px;
+    border: 1.5px solid var(--hawkes-blue);
+    border-radius: 16px;
+    box-shadow: 0 2px 6px rgba(10, 23, 36, 0.06);
+    align-items: flex-end;
+    gap: 8px;
+}
+
+#hud {
+    align-items: flex-start;
+}
+
+.starsBox .statLabel {
+    gap: 9px;
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: 1.8px;
+}
+
+.starsBox .mini-icon {
+    width: 20px;
+    height: 20px;
+}
+
+.starsBox .statValue {
+    margin-top: 0;
+    font-size: 46px;
+    font-weight: 800;
+    line-height: normal;
+}
+
+
+/* ================= TOP BAR TITLE + DOLLARS ALIGNMENT (2026-09-23, per Kayla) =================
+   - Game title in Luckiest Guy (Google Font, loaded in index.html).
+     It ships one weight, so 400 instead of a faux-bolded 800.
+   - DOLLARS card content left-aligned: icon lines up with the left
+     edge of the dollar amount (same as Coin Catch's SAVED card). */
+#gameTitle {
+    font-family: "Luckiest Guy", cursive;
+    font-weight: 400;
+}
+
+.starsBox {
+    align-items: flex-start;
+}
+
+
+/* ================= TOP BAR TITLE + RESTART POSITION (2026-09-23, per Kayla) =================
+   Same in Driver Decides and Coin Catch:
+   - Title: Luckiest Guy, 38px.
+   - Luckiest Guy's letters sit high in their line box (more empty space
+     under the text than above it), so the title is nudged down
+     5.5px to sit visually centered in the white bar.
+   - Restart button: 26px from the right edge of the screen, vertically
+     centered in the bar. */
+#gameTitle {
+    font-size: 38px;
+    line-height: 1;
+    position: relative;
+    top: 5.5px;
+}
+
+#topBar {
+    padding: 0 26px;
+}
+
+
+/* ================= TOP BAR + HUD SPACING (2026-09-23, per Kayla) =================
+   - No 3px Hawkes Blue line under the top bar anymore -- same plain white
+     90px bar + soft shadow as Coin Catch and Lemonade Stand, so the
+     title and restart button line up identically in all three (title
+     nudge above bumped 5px -> 5.5px to match now that the bar's white
+     area is the full 90px).
+   - DOLLARS card sits 20px under the bar and 20px in from the screen
+     edges, same as Coin Catch's cards. */
+#topBar {
+    border-bottom: none;
+}
+
+#hud {
+    top: calc(100% / 12 + 20px);
+    left: 20px;
+    right: 20px;
 }
