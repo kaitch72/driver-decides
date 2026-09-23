@@ -1734,3 +1734,48 @@ body {
     left: 20px;
     right: 20px;
 }
+
+
+/* ========================================
+   POPUP CONFETTI (final popup, 2026-09-23)
+   Same falling confetti as Budget Builder's grand finale.
+   isolation + z-index:-1 keeps the layer above the box's own
+   gradient but behind all of its content. Filled by
+   startPopupConfetti() in game.js.
+======================================== */
+
+.finishCard {
+    isolation: isolate;
+}
+
+.finishCard > .popup-confetti {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    overflow: hidden;
+    border-radius: inherit;
+    pointer-events: none;
+}
+
+.popup-confetti span {
+    position: absolute;
+    top: -30px;
+    width: 12px;
+    height: 18px;
+    border-radius: 3px;
+    opacity: 0.9;
+    animation-name: popup-confetti-fall;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+}
+
+@keyframes popup-confetti-fall {
+    0%   { transform: translate(0, 0) rotate(0); }
+    100% { transform: translate(var(--drift), 1100px) rotate(var(--spin)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .popup-confetti {
+        display: none;
+    }
+}
