@@ -90,6 +90,70 @@ function roadHalfWidthAt(y) {
     return 50 - roadLeftEdgeX(y);
 }
 
+/* ================= SHARED SCENERY CAMERA (2026-09-23, per Kayla) =================
+   Every piece of ambient scenery (trees, flowers/grass patches, the
+   billboard/branch landmarks, and the yellow center-line dashes) is now
+   driven by ONE rigid world: each piece has a fixed spot in the world at
+   some depth, and a single camera rolls forward through that world at a
+   constant speed (SCENE_CAMERA_SPEED). Screen position and size are then
+   pure perspective of that depth - y = vanishing point + k/depth, and
+   size/sideways offset scale by 1/depth - with the vanishing point read
+   straight off the road art's own edges (where the two road edges meet).
+
+   Why: the old version eased each piece's screen position with its own
+   t*t curve from its own spawn time (and trees, flowers, dashes and
+   landmarks all had different trip lengths). In world terms that meant a
+   freshly spawned piece was racing forward while an older one ahead of it
+   had nearly stopped - so a billboard that popped up behind a tree could
+   visibly close most of the gap and "catch up" to it, which read as the
+   scenery moving on its own instead of the scooter moving through it.
+   With one shared depth clock, a thing behind can never gain on a thing
+   ahead, everything at the same distance moves at the same speed, and
+   everything radiates out from the same vanishing point as the road. */
+const SCENE_VANISH_Y = ROAD_EDGE_Y0 + (50 - ROAD_EDGE_X0) / ROAD_EDGE_X_PER_Y; // ~25.2%, where the road edges meet
+const SCENE_CREST_Y = 33.3075;  // hill line - where scenery first appears
+const SCENE_NEAR_Y = 118;       // row where depth = 1 (full "near" size), just past the bottom edge
+const SCENE_DEPTH_K = SCENE_NEAR_Y - SCENE_VANISH_Y;
+
+function sceneYAtDepth(depth) {
+    return SCENE_VANISH_Y + SCENE_DEPTH_K / depth;
+}
+
+function sceneDepthAtY(y) {
+    return SCENE_DEPTH_K / (y - SCENE_VANISH_Y);
+}
+
+const SCENE_CREST_DEPTH = sceneDepthAtY(SCENE_CREST_Y); // ~11.5
+
+// How long a piece takes to ride from the hill crest to SCENE_NEAR_Y.
+// Far-off things barely creep near the crest and then rush past at the
+// bottom, like real driving - that's the perspective, not a speed change.
+const SCENE_CREST_TO_NEAR_MS = 9500;
+const SCENE_CAMERA_SPEED = (SCENE_CREST_DEPTH - 1) / SCENE_CREST_TO_NEAR_MS; // depth units per ms
+
+// Depth of a piece that spawned at the crest `ageMs` ago.
+function sceneDepthAtAge(ageMs) {
+    return SCENE_CREST_DEPTH - SCENE_CAMERA_SPEED * ageMs;
+}
+
+// Age at which a piece spawned at the crest reaches screen row y.
+function sceneAgeAtY(y) {
+    return (SCENE_CREST_DEPTH - sceneDepthAtY(y)) / SCENE_CAMERA_SPEED;
+}
+
+// Everything a roadside piece needs for one frame: screen row, scale
+// (1 at SCENE_NEAR_Y, smaller further away), and x solved from a fixed
+// world setback beyond the road edge (worldOutset, in % at scale 1) - so
+// it rides out along a straight line from the vanishing point like the
+// road edge itself does, instead of sliding sideways over the grass.
+function sceneRoadsidePlacement(ageMs, worldOutset, isLeft) {
+    const depth = sceneDepthAtAge(ageMs);
+    const y = sceneYAtDepth(depth);
+    const scale = 1 / depth;
+    const x = treeLaneX(y, worldOutset * scale, isLeft);
+    return { depth, y, scale, x };
+}
+
 // How far out into its half of the road each sign sits, as a fraction of
 // the road's half-width at that row - kept comfortably inside 1 so the
 // sign's own box width never pokes past the grass line even at full size.
@@ -620,7 +684,7 @@ function continueSignOffScreen(sourceEl, isLeftSide) {
 
 // The sign the player DID land on flies straight up and fades out, right
 // where it's standing - the same motion the old word-toasts used - with
-// its border/glow lit green or red for correct/wrong so the color (not a
+// the whole box filled green (pop) or red (head-shake) so the color (not a
 // sentence) is what actually lands the feedback.
 function flyAwaySign(sourceEl, outcome) {
 
@@ -643,7 +707,7 @@ function flyAwaySign(sourceEl, outcome) {
         if (clone.parentNode) {
             clone.parentNode.removeChild(clone);
         }
-    }, 950);
+    }, 1150);
 }
 
 // Sends each sign off on its own exit animation based on how the item
@@ -709,10 +773,10 @@ function resolveSignsFeedback(chosenLane, outcome) {
 // fading in a few points higher, which used to read as trees growing in
 // over the hill artwork itself rather than out of the grass beside the
 // road.
-const TREE_HORIZON_Y = 33.3075;
-const TREE_GROUND_Y = 118;
-const TREE_OUTSET_FAR = 7;    // % beyond the road edge at the hill crest
-const TREE_OUTSET_NEAR = 28;  // % beyond the road edge by the end of the trip
+// 2026-09-23: positions/sizes now come from the shared scenery camera
+// (see SHARED SCENERY CAMERA near the top) - these are world values,
+// i.e. what they measure at full near size (SCENE_NEAR_Y).
+const TREE_OUTSET = 28;       // % beyond the road edge, at near size
 // Extra random scatter on top of the growing offset above, fixed per tree
 // for its whole trip (same idea as FLOWER_JITTER_MAX below) - without this,
 // every tree at a given depth sits at the exact same distance from the
@@ -722,10 +786,34 @@ const TREE_OUTSET_NEAR = 28;  // % beyond the road edge by the end of the trip
 // would fight the base offset and risk landing a tree back on the road
 // shoulder right where it just eased away from it.
 const TREE_JITTER_MAX = 38;
-const TREE_WIDTH_FAR = 1.4;   // % of #roadScene width
-const TREE_WIDTH_NEAR = 26;
-const TREE_TRAVEL_MS = 4700;
-const TREE_SPAWN_INTERVAL_MS = 950;
+
+// 2026-09-23 (Kayla: "all the trees are right on the edge of the road,
+// some have to be further out"): with true perspective, a tree's whole
+// setback shrinks toward the vanishing point with distance, so a
+// 0-38 jitter alone kept every far tree pinned beside the road. Each tree
+// now rolls a setback from one of three bands so the field has depth
+// sideways too: some line the road, some sit out in the field, and some
+// are way out - those drift off the side of the screen partway down
+// (like real roadside scenery does) instead of passing right by you.
+// Values are extra setback beyond TREE_OUTSET, at near size.
+const TREE_SETBACK_BANDS = [
+    { weight: 0.40, min: 0,   max: 30  },  // along the road
+    { weight: 0.35, min: 45,  max: 120 },  // out in the field
+    { weight: 0.25, min: 150, max: 300 }   // far out
+];
+
+function pickTreeSetback() {
+    let r = Math.random();
+    for (const band of TREE_SETBACK_BANDS) {
+        if (r < band.weight) {
+            return band.min + Math.random() * (band.max - band.min);
+        }
+        r -= band.weight;
+    }
+    return 0;
+}
+const TREE_WIDTH_NEAR = 26;   // % of #roadScene width at near size
+const TREE_SPAWN_INTERVAL_MS = 1300; // 2026-09-23: tuned with TREE_SETBACK_BANDS below // 2026-09-23: was 950 - with the longer shared-camera trip that crowded the hill line
 
 function treeLaneX(y, outset, isLeftSide) {
     return isLeftSide ? roadLeftEdgeX(y) - outset : (100 - roadLeftEdgeX(y)) + outset;
@@ -747,14 +835,24 @@ function startTreeAmbience() {
     treeAnimFrame = requestAnimationFrame(tickAmbientTrees);
 }
 
-function spawnAmbientTree() {
+// preAgeMs/forceLeft are only used by prefillAmbientScenery() - it plants
+// trees as if the spawner had already been running, so the road starts
+// out full instead of empty with everything bunched at the hill line.
+function spawnAmbientTree(preAgeMs, forceLeft) {
 
-    if (ambientPaused) {
+    const isPrefill = typeof preAgeMs === "number";
+
+    if (ambientPaused && !isPrefill) {
         return;
     }
 
-    const isLeft = treeSpawnNextIsLeft;
-    treeSpawnNextIsLeft = !treeSpawnNextIsLeft;
+    let isLeft;
+    if (isPrefill) {
+        isLeft = forceLeft;
+    } else {
+        isLeft = treeSpawnNextIsLeft;
+        treeSpawnNextIsLeft = !treeSpawnNextIsLeft;
+    }
 
     const spot = document.createElement("div");
     spot.className = "treeSpot";
@@ -773,9 +871,24 @@ function spawnAmbientTree() {
 
     // Random but fixed for this tree's whole trip, so it settles into its
     // own spot out in the grass instead of drifting sideways as it travels.
-    const jitter = Math.random() * TREE_JITTER_MAX;
+    const jitter = pickTreeSetback();
 
-    activeTrees.push({ el: spot, isLeft, jitter, startTime: null });
+    const tree = { el: spot, isLeft, jitter, startTime: null, preAge: isPrefill ? preAgeMs : 0 };
+    activeTrees.push(tree);
+    placeAmbientTree(tree, tree.preAge);
+}
+
+function placeAmbientTree(tree, elapsed) {
+    const place = sceneRoadsidePlacement(elapsed, TREE_OUTSET + tree.jitter, tree.isLeft);
+    // Size comes from the same depth as position (1/depth), so it only
+    // ever reflects how close the tree really is.
+    tree.el.style.left = place.x + "%";
+    tree.el.style.top = place.y + "%";
+    tree.el.style.width = (TREE_WIDTH_NEAR * place.scale) + "%";
+    // Stack closer (bigger) trees above farther ones - spawn/DOM order
+    // alone would let a newer, farther tree paint over an older, closer one.
+    tree.el.style.zIndex = Math.round(place.scale * 1000);
+    return place;
 }
 
 function tickAmbientTrees(timestamp) {
@@ -794,41 +907,12 @@ function tickAmbientTrees(timestamp) {
         const tree = activeTrees[i];
 
         if (tree.startTime === null) {
-            tree.startTime = timestamp;
+            tree.startTime = timestamp - tree.preAge;
         }
 
-        const elapsed = timestamp - tree.startTime;
-        const progress = Math.min(1, elapsed / TREE_TRAVEL_MS);
-        const eased = easeInPerspective(progress);
+        const place = placeAmbientTree(tree, timestamp - tree.startTime);
 
-        const y = lerp(TREE_HORIZON_Y, TREE_GROUND_Y, eased);
-        const outset = lerp(TREE_OUTSET_FAR, TREE_OUTSET_NEAR, eased) + tree.jitter;
-        const x = treeLaneX(y, outset, tree.isLeft);
-        // Width uses the SAME `eased` curve as position (not a separately
-        // tuned curve - two earlier attempts at that, sqrt(progress) and
-        // plain progress, both grew width faster than the tree's own
-        // on-screen depth, so a tree could reach a big size while still
-        // only partway down the screen, reading as oversized for how
-        // "close" it actually looked. Tying width to the exact same
-        // `eased` value as y guarantees size only ever reflects true
-        // depth - small near the hill line, and only reaching TREE_WIDTH_
-        // NEAR right as it reaches TREE_GROUND_Y, same as the signs.
-        const width = lerp(TREE_WIDTH_FAR, TREE_WIDTH_NEAR, eased);
-
-        tree.el.style.left = x + "%";
-        tree.el.style.top = y + "%";
-        tree.el.style.width = width + "%";
-        // Stack closer (more-progressed, bigger) trees above farther ones.
-        // Trees are appended to the DOM in spawn order and never reordered,
-        // so without this a tree spawned a moment ago (small, still near
-        // the hill line) would sit later in the DOM - and paint on TOP of
-        // an older tree that's already grown big and close, which reads as
-        // a small background tree floating in front of a large foreground
-        // one. Keying z-index to progress keeps paint order matching visual
-        // depth regardless of spawn order.
-        tree.el.style.zIndex = Math.round(progress * 1000);
-
-        if (progress >= 1) {
+        if (place.depth <= 1) {
             tree.el.remove();
             activeTrees.splice(i, 1);
         }
@@ -850,9 +934,17 @@ function tickAmbientTrees(timestamp) {
 // Alternates asset (billboard, then branch, then billboard again...) each
 // time one spawns, so both eventually show up without ever doubling up on
 // the same one twice in a row. Spawn interval is deliberately huge next to
-// TREE_SPAWN_INTERVAL_MS (950) / FLOWER_SPAWN_INTERVAL_MS (560) - this is
+// TREE_SPAWN_INTERVAL_MS (1300) / FLOWER_SPAWN_INTERVAL_MS (750) - this is
 // a "every once in a while" flourish, not steady scenery.
-const LANDMARK_ASSETS = ["images/SP-billboard.svg", "images/SP-branch.svg"];
+// Per-asset size (2026-09-24): the new SP-Branch.svg is wide and short
+// (~2:1), so at the billboard's width it read small - it gets a 1.25x
+// width, plus a little extra setback so its wider footprint still clears
+// the road edge. Filename case must match the file exactly (web hosts are
+// case-sensitive even though Windows isn't).
+const LANDMARK_ASSETS = [
+    { src: "images/SP-billboard.svg", widthMult: 1,    extraOutset: 0 },
+    { src: "images/SP-Branch.svg",    widthMult: 1.25, extraOutset: 6 }
+];
 // Kept noticeably more conservative than TREE_OUTSET_FAR/NEAR and
 // TREE_JITTER_MAX - a tree that happens to roll max jitter and drifts
 // off-frame early is invisible in a dense stream of them, but a landmark
@@ -861,12 +953,9 @@ const LANDMARK_ASSETS = ["images/SP-billboard.svg", "images/SP-branch.svg"];
 // instead of clipping out early. It's still expected to eventually exit
 // past the frame edge right at the very end, same as the trees do - that
 // reads as "passing by close up," not a bug.
-const LANDMARK_OUTSET_FAR = 8;    // % beyond the road edge at the hill crest
-const LANDMARK_OUTSET_NEAR = 22;  // % beyond the road edge by the end of the trip
+const LANDMARK_OUTSET = 22;       // % beyond the road edge at near size (shared scenery camera)
 const LANDMARK_JITTER_MAX = 12;   // same idea as TREE_JITTER_MAX - random extra setback, fixed per landmark for its whole trip
-const LANDMARK_WIDTH_FAR = 2.4;   // % of #roadScene width
-const LANDMARK_WIDTH_NEAR = 44;
-const LANDMARK_TRAVEL_MS = TREE_TRAVEL_MS; // same growth pacing as the trees
+const LANDMARK_WIDTH_NEAR = 44;   // % of #roadScene width at near size
 const LANDMARK_SPAWN_INTERVAL_MS = 15000;  // ~15s between landmarks - rare, not ambient filler
 
 let landmarkSpawnNextIsLeft = true;
@@ -905,7 +994,7 @@ function spawnAmbientLandmark() {
 
     const img = document.createElement("img");
     img.className = "landmarkDecor";
-    img.src = asset;
+    img.src = asset.src;
     img.alt = "";
 
     spot.appendChild(img);
@@ -916,7 +1005,7 @@ function spawnAmbientLandmark() {
     // exact same distance from the road every time.
     const jitter = Math.random() * LANDMARK_JITTER_MAX;
 
-    activeLandmarks.push({ el: spot, isLeft, jitter, startTime: null });
+    activeLandmarks.push({ el: spot, isLeft, jitter, widthMult: asset.widthMult, extraOutset: asset.extraOutset, startTime: null });
 }
 
 function tickAmbientLandmarks(timestamp) {
@@ -939,13 +1028,10 @@ function tickAmbientLandmarks(timestamp) {
         }
 
         const elapsed = timestamp - landmark.startTime;
-        const progress = Math.min(1, elapsed / LANDMARK_TRAVEL_MS);
-        const eased = easeInPerspective(progress);
-
-        const y = lerp(TREE_HORIZON_Y, TREE_GROUND_Y, eased);
-        const outset = lerp(LANDMARK_OUTSET_FAR, LANDMARK_OUTSET_NEAR, eased) + landmark.jitter;
-        const x = treeLaneX(y, outset, landmark.isLeft);
-        const width = lerp(LANDMARK_WIDTH_FAR, LANDMARK_WIDTH_NEAR, eased);
+        const place = sceneRoadsidePlacement(elapsed, LANDMARK_OUTSET + landmark.extraOutset + landmark.jitter, landmark.isLeft);
+        const y = place.y;
+        const x = place.x;
+        const width = LANDMARK_WIDTH_NEAR * landmark.widthMult * place.scale;
 
         landmark.el.style.left = x + "%";
         landmark.el.style.top = y + "%";
@@ -953,9 +1039,9 @@ function tickAmbientLandmarks(timestamp) {
         // Same depth-stacking fix as the trees - keeps a landmark that's
         // gotten big and close from ever painting behind one still small
         // and distant, regardless of spawn order.
-        landmark.el.style.zIndex = Math.round(progress * 1000);
+        landmark.el.style.zIndex = Math.round(place.scale * 1000);
 
-        if (progress >= 1) {
+        if (place.depth <= 1) {
             landmark.el.remove();
             activeLandmarks.splice(i, 1);
         }
@@ -976,14 +1062,31 @@ function tickAmbientLandmarks(timestamp) {
 // style.css) - dashes begin exactly where the road surface itself starts,
 // instead of above it. Same figure as GROUND_BAND_TOP/TREE_HORIZON_Y,
 // since hills were slid up in style.css to meet this same line.
-const DASH_HORIZON_Y = 33.3075;
-const DASH_GROUND_Y = 112;
-const DASH_WIDTH_FAR = 0.35;   // % of #roadScene width
-const DASH_WIDTH_NEAR = 2.5;
-const DASH_HEIGHT_FAR = 1.0;   // % of #roadScene height
-const DASH_HEIGHT_NEAR = 8.5;
-const DASH_TRAVEL_MS = 3300;
-const DASH_SPAWN_INTERVAL_MS = 320;
+// 2026-09-23: dashes ride the shared scenery camera too (see SHARED
+// SCENERY CAMERA), so the road's own markings pass at exactly the same
+// speed as the trees/grass beside them. Each dash is a real strip of
+// road DASH_DEPTH_LENGTH deep, so it's drawn from its near edge to its
+// far edge - naturally squashed thin up at the crest and long up close.
+const DASH_WIDTH_NEAR = 2.35;      // % of #roadScene width at near size
+const DASH_DEPTH_LENGTH = 0.2;     // dash length in depth units
+const DASH_MIN_HEIGHT = 0.25;      // keep the farthest dashes from vanishing to nothing
+// Retired once its far (top) edge has passed the bottom of the frame.
+const DASH_TRAVEL_MS = (SCENE_CREST_DEPTH - DASH_DEPTH_LENGTH - sceneDepthAtY(100)) / SCENE_CAMERA_SPEED;
+
+// Screen rect of a dash whose far edge left the crest ageMs ago.
+function dashPlacementAtAge(ageMs) {
+    const farDepth = sceneDepthAtAge(ageMs);
+    const nearDepth = Math.max(0.05, farDepth - DASH_DEPTH_LENGTH);
+    const top = sceneYAtDepth(farDepth);
+    const bottom = sceneYAtDepth(nearDepth);
+    const height = Math.max(DASH_MIN_HEIGHT, bottom - top);
+    return {
+        y: top + height / 2,  // .ambientDash is centered on its point
+        height,
+        width: DASH_WIDTH_NEAR * (2 / (farDepth + nearDepth))
+    };
+}
+const DASH_SPAWN_INTERVAL_MS = 500;  // with the shared camera speed, leaves a gap ~1.75x a dash
 
 let activeDashes = [];      // { el, startTime }
 let dashSpawnTimer = null;
@@ -1033,18 +1136,13 @@ function tickAmbientDashes(timestamp) {
         }
 
         const elapsed = timestamp - dash.startTime;
-        const progress = Math.min(1, elapsed / DASH_TRAVEL_MS);
-        const eased = easeInPerspective(progress);
+        const place = dashPlacementAtAge(elapsed);
 
-        const y = lerp(DASH_HORIZON_Y, DASH_GROUND_Y, eased);
-        const width = lerp(DASH_WIDTH_FAR, DASH_WIDTH_NEAR, eased);
-        const height = lerp(DASH_HEIGHT_FAR, DASH_HEIGHT_NEAR, eased);
+        dash.el.style.top = place.y + "%";
+        dash.el.style.width = place.width + "%";
+        dash.el.style.height = place.height + "%";
 
-        dash.el.style.top = y + "%";
-        dash.el.style.width = width + "%";
-        dash.el.style.height = height + "%";
-
-        if (progress >= 1) {
+        if (elapsed >= DASH_TRAVEL_MS) {
             dash.el.remove();
             activeDashes.splice(i, 1);
         }
@@ -1094,7 +1192,9 @@ const GROUND_BAND_TOP = 33.3075;
 // height above the band top down past the bottom of the frame in one
 // pass; the visible band is ~54.3% tall, a pattern is 69.2% tall, so in
 // the worst case that's under 5 tiles. A little extra headroom is cheap.
-const GROUND_TILE_POOL_SIZE = 8;
+// 2026-09-23: bumped for the perspective layout below - far-off stripes
+// get thin up near the hill line, so many more fit on screen at once.
+const GROUND_TILE_POOL_SIZE = 24;
 
 // Deliberate overlap on every tile - see the note where it's used below.
 // Sized generously: dark grass.svg's top edge is a wavy shape, not a flat
@@ -1110,14 +1210,90 @@ const GROUND_TILE_POOL_SIZE = 8;
 // green that blends in, never to the page's blue background.
 const GROUND_TILE_OVERLAP = 3;
 
-// How long one light+dark PAIR's own height takes to scroll past -
-// purely ambient pacing, independent of round/game state like the trees
-// and dashes. Kayla's call (2026-09-16) - it doesn't need to match the
-// signs/road pace, just needs to feel like slow, steady ground motion
-// rather than rushing by.
-const GROUND_SCROLL_MS_PER_PAIR = 15000;
+// 2026-09-23 (Kayla: "the grass seems to be coming in at a different
+// pace"): the grass stripes now ride the SAME shared scenery camera as the
+// trees/flowers/dashes (see SHARED SCENERY CAMERA). Each light/dark stripe
+// is a fixed strip of ground GROUND_STRIPE_DEPTH[type] deep; the camera
+// rolls over them at SCENE_CAMERA_SPEED, and each stripe's top/bottom
+// edges are just sceneYAtDepth() of its far/near edge. So stripes are thin
+// and slow up by the hills and tall and fast near the scooter - exactly
+// matching whatever tree or flower is standing on them. (Replaces the old
+// flat, constant-speed scroll, GROUND_SCROLL_MS_PER_PAIR = 15000.)
+// Same light:dark proportion as the original tile heights.
+const GROUND_STRIPE_PAIR_DEPTH = 1.6;
+const GROUND_STRIPE_DEPTH = GROUND_TILE_TYPES.map(t => GROUND_STRIPE_PAIR_DEPTH * t.heightPct / GROUND_PATTERN_HEIGHT);
+// Stop laying stripes once they're this close (well past the bottom edge).
+const GROUND_STRIPE_MIN_DEPTH = 0.6;
 
-const GROUND_SCROLL_SPEED = GROUND_PATTERN_HEIGHT / GROUND_SCROLL_MS_PER_PAIR; // % of scene height per ms
+// Lays the whole ground band out for a camera that has rolled
+// `cameraTravel` depth units since the ride began. Pure function of that
+// one number (wrapped by the pattern length), so it can never drift.
+function layoutGroundTiles(cameraTravel) {
+
+    const P = GROUND_STRIPE_PAIR_DEPTH;
+    const L0 = GROUND_STRIPE_DEPTH[0];
+
+    // World position (along the road) currently sitting at the hill crest,
+    // and the stripe that contains it. Stripe pattern repeats every P:
+    // [start, start+L0) is light, [start+L0, start+P) is dark.
+    const crestWorld = SCENE_CREST_DEPTH + cameraTravel;
+    const phase = ((crestWorld % P) + P) % P;
+    let patternStart = crestWorld - phase;
+    let typeIndex = phase < L0 ? 0 : 1;
+
+    let poolIndex = 0;
+
+    while (poolIndex < groundTilePool.length) {
+
+        const worldNear = patternStart + (typeIndex === 0 ? 0 : L0);
+        const worldFar = worldNear + GROUND_STRIPE_DEPTH[typeIndex];
+        const nearDepth = worldNear - cameraTravel;
+        const farDepth = worldFar - cameraTravel;
+
+        if (farDepth <= GROUND_STRIPE_MIN_DEPTH) {
+            break;
+        }
+
+        const top = sceneYAtDepth(farDepth);
+        const bottom = sceneYAtDepth(Math.max(GROUND_STRIPE_MIN_DEPTH, nearDepth));
+        const height = bottom - top;
+
+        const type = GROUND_TILE_TYPES[typeIndex];
+        const tileEl = groundTilePool[poolIndex];
+
+        if (tileEl.dataset.src !== type.src) {
+            tileEl.style.backgroundImage = 'url("' + type.src + '")';
+            tileEl.style.backgroundColor = type.color;
+            tileEl.dataset.src = type.src;
+        }
+        tileEl.style.display = "block";
+        // Extend every tile up a little (see GROUND_TILE_OVERLAP) so no
+        // sub-pixel seam shows between neighbors - scaled to the stripe's
+        // own height now, so a big near stripe can't swallow the thin far
+        // stripes above it.
+        const overlap = Math.min(GROUND_TILE_OVERLAP, height * 0.08 + 0.2);
+        tileEl.style.top = (top - overlap) + "%";
+        tileEl.style.height = (height + overlap) + "%";
+
+        poolIndex++;
+
+        if (bottom >= 100) {
+            break;
+        }
+
+        // Next stripe down the screen = the next one nearer the camera.
+        if (typeIndex === 1) {
+            typeIndex = 0;
+        } else {
+            typeIndex = 1;
+            patternStart -= P;
+        }
+    }
+
+    for (; poolIndex < groundTilePool.length; poolIndex++) {
+        groundTilePool[poolIndex].style.display = "none";
+    }
+}
 
 let groundTilePool = [];       // reusable <img> elements
 let groundScrollStartTime = null;
@@ -1166,50 +1342,8 @@ function tickGroundScroll(timestamp) {
     }
 
     const elapsed = timestamp - groundScrollStartTime;
-    // Always in [0, GROUND_PATTERN_HEIGHT) no matter how long the page has
-    // been open - this one wrap is what keeps the whole system bounded.
-    const scrollIntoPattern = (elapsed * GROUND_SCROLL_SPEED) % GROUND_PATTERN_HEIGHT;
-
-    // Phased so cursor moves DOWN the screen as scrollIntoPattern grows
-    // (wrapping back up by one whole pattern-height, seamlessly, once it
-    // passes GROUND_BAND_TOP) - same direction the trees/flowers travel
-    // in, so the ground reads as coming toward the viewer like everything
-    // else, not sliding backward up toward the hills.
-    let cursor = GROUND_BAND_TOP - GROUND_PATTERN_HEIGHT + scrollIntoPattern;
-    let typeIndex = 0;
-    let poolIndex = 0;
-
-    while (cursor < 100 && poolIndex < groundTilePool.length) {
-
-        const type = GROUND_TILE_TYPES[typeIndex % GROUND_TILE_TYPES.length];
-        const tileEl = groundTilePool[poolIndex];
-
-        if (tileEl.dataset.src !== type.src) {
-            tileEl.style.backgroundImage = 'url("' + type.src + '")';
-            tileEl.style.backgroundColor = type.color;
-            tileEl.dataset.src = type.src;
-        }
-        tileEl.style.display = "block";
-        // Extend every tile up and taller by a hair (GROUND_TILE_OVERLAP) -
-        // percentage-based top/height on adjacent elements can round to
-        // sub-pixel-different edges, leaving a 1px seam that shows the
-        // page background through. Each pool element is later in DOM
-        // order than the one above it, so it already paints on top at
-        // the seam - this overlap just makes sure it actually covers it.
-        tileEl.style.top = (cursor - GROUND_TILE_OVERLAP) + "%";
-        tileEl.style.height = (type.heightPct + GROUND_TILE_OVERLAP) + "%";
-
-        cursor += type.heightPct;
-        typeIndex++;
-        poolIndex++;
-    }
-
-    // Anything left in the pool isn't needed for this frame's slice of
-    // the band - hide it rather than leaving it sitting at a stale
-    // position from an earlier frame.
-    for (; poolIndex < groundTilePool.length; poolIndex++) {
-        groundTilePool[poolIndex].style.display = "none";
-    }
+    // Wrapped to one pattern length so the number never grows unbounded.
+    layoutGroundTiles((elapsed * SCENE_CAMERA_SPEED) % GROUND_STRIPE_PAIR_DEPTH);
 
     groundScrollAnimFrame = requestAnimationFrame(tickGroundScroll);
 }
@@ -1224,21 +1358,33 @@ const FLOWER_ASSETS = ["images/flowerwhite.svg", "images/floweryellow.svg", "ima
 const PATCH_ASSET = "images/grasspatch.svg";
 // Matches TREE_HORIZON_Y/GROUND_BAND_TOP - same hill-line horizon as
 // everything else roadside, so flowers don't fade in over the hill art.
-const FLOWER_HORIZON_Y = 33.3075;
-const FLOWER_GROUND_Y = 118;
-const FLOWER_OUTSET_FAR = 3;
-const FLOWER_OUTSET_NEAR = 22;
+// 2026-09-23: rides the shared scenery camera (see SHARED SCENERY CAMERA);
+// values below are at near size.
+const FLOWER_OUTSET = 22;
 const FLOWER_JITTER_MAX = 26; // extra random scatter, fixed per flower for its whole trip
+// Same idea as TREE_SETBACK_BANDS - some flowers/patches scattered well out
+// in the field instead of every one hugging the road.
+const FLOWER_FAR_CHANCE = 0.45;
+const FLOWER_FAR_MIN = 40;
+const FLOWER_FAR_MAX = 220;
 // Flowers and grass patches share the same travel/outset curve above, but
 // grow to different caps: flowers stay small sprinkled detail, while grass
 // patches (being a flatter, ground-level shape rather than a little bloom)
 // can read fine a bit bigger without looking out of place.
-const FLOWER_WIDTH_FAR = 0.3;   // % of #roadScene width
-const FLOWER_WIDTH_NEAR = 4;
-const PATCH_WIDTH_FAR = 0.5;
+const FLOWER_WIDTH_NEAR = 4;    // % of #roadScene width at near size
 const PATCH_WIDTH_NEAR = 8;
-const FLOWER_TRAVEL_MS = 4300;
-const FLOWER_SPAWN_INTERVAL_MS = 560;
+
+// Fixed world setback for one flower/patch. Floored at half its own width
+// (plus a margin) so the whole shape - not just its center - always
+// clears the road; road paints on top (z-index 3 vs 2), so anything
+// overlapping it would be cut off. Since width and setback both scale by
+// the same 1/depth now, checking it once at near size holds for the
+// whole trip.
+function flowerWorldOutset(jitter, isPatch) {
+    const widthNear = isPatch ? PATCH_WIDTH_NEAR : FLOWER_WIDTH_NEAR;
+    return Math.max(widthNear / 2 + 1, FLOWER_OUTSET + jitter);
+}
+const FLOWER_SPAWN_INTERVAL_MS = 750; // 2026-09-23: was 560, thinned out with the trees
 
 let flowerSpawnNextIsLeft = true;
 let activeFlowers = [];     // { el, isLeft, jitter, startTime }
@@ -1256,14 +1402,22 @@ function startFlowerAmbience() {
     flowerAnimFrame = requestAnimationFrame(tickAmbientFlowers);
 }
 
-function spawnAmbientFlower() {
+// Same prefill options as spawnAmbientTree().
+function spawnAmbientFlower(preAgeMs, forceLeft) {
 
-    if (ambientPaused) {
+    const isPrefill = typeof preAgeMs === "number";
+
+    if (ambientPaused && !isPrefill) {
         return;
     }
 
-    const isLeft = flowerSpawnNextIsLeft;
-    flowerSpawnNextIsLeft = !flowerSpawnNextIsLeft;
+    let isLeft;
+    if (isPrefill) {
+        isLeft = forceLeft;
+    } else {
+        isLeft = flowerSpawnNextIsLeft;
+        flowerSpawnNextIsLeft = !flowerSpawnNextIsLeft;
+    }
 
     const spot = document.createElement("div");
     spot.className = "flowerSpot";
@@ -1281,9 +1435,23 @@ function spawnAmbientFlower() {
 
     // Random but fixed for this flower's whole trip, so it settles into
     // its own "lane" out in the grass instead of drifting.
-    const jitter = (Math.random() * 2 - 1) * FLOWER_JITTER_MAX;
+    const jitter = Math.random() < FLOWER_FAR_CHANCE
+        ? FLOWER_FAR_MIN + Math.random() * (FLOWER_FAR_MAX - FLOWER_FAR_MIN)
+        : (Math.random() * 2 - 1) * FLOWER_JITTER_MAX;
 
-    activeFlowers.push({ el: spot, isLeft, jitter, isPatch, startTime: null });
+    const flower = { el: spot, isLeft, jitter, isPatch, startTime: null, preAge: isPrefill ? preAgeMs : 0 };
+    activeFlowers.push(flower);
+    placeAmbientFlower(flower, flower.preAge);
+}
+
+function placeAmbientFlower(flower, elapsed) {
+    const place = sceneRoadsidePlacement(elapsed, flowerWorldOutset(flower.jitter, flower.isPatch), flower.isLeft);
+    flower.el.style.left = place.x + "%";
+    flower.el.style.top = place.y + "%";
+    flower.el.style.width = ((flower.isPatch ? PATCH_WIDTH_NEAR : FLOWER_WIDTH_NEAR) * place.scale) + "%";
+    // Same depth-stacking fix as the trees.
+    flower.el.style.zIndex = Math.round(place.scale * 1000);
+    return place;
 }
 
 function tickAmbientFlowers(timestamp) {
@@ -1302,41 +1470,12 @@ function tickAmbientFlowers(timestamp) {
         const flower = activeFlowers[i];
 
         if (flower.startTime === null) {
-            flower.startTime = timestamp;
+            flower.startTime = timestamp - flower.preAge;
         }
 
-        const elapsed = timestamp - flower.startTime;
-        const progress = Math.min(1, elapsed / FLOWER_TRAVEL_MS);
-        const eased = easeInPerspective(progress);
+        const place = placeAmbientFlower(flower, timestamp - flower.startTime);
 
-        const y = lerp(FLOWER_HORIZON_Y, FLOWER_GROUND_Y, eased);
-        const width = flower.isPatch
-            ? lerp(PATCH_WIDTH_FAR, PATCH_WIDTH_NEAR, eased)
-            : lerp(FLOWER_WIDTH_FAR, FLOWER_WIDTH_NEAR, eased);
-        // .flowerSpot is centered on its (x, y) point (translate(-50%,-50%)
-        // in CSS), so the flower/patch extends width/2 to either side of x -
-        // a flat "at least 1" floor on outset (the old behavior) only kept
-        // the CENTER off the road, not the whole shape, so anything wider
-        // than ~2% could still have its inner half poke past the road edge
-        // and disappear behind it (road paints on top, z-index 3 vs 2).
-        // Flooring outset at half the shape's own current width instead
-        // (plus a small margin) guarantees the whole flower/patch clears
-        // the road, not just its center point.
-        const outset = Math.max(width / 2 + 1, lerp(FLOWER_OUTSET_FAR, FLOWER_OUTSET_NEAR, eased) + flower.jitter);
-        const x = treeLaneX(y, outset, flower.isLeft);
-
-        flower.el.style.left = x + "%";
-        flower.el.style.top = y + "%";
-        flower.el.style.width = width + "%";
-        // Same depth-stacking fix as the trees: without this, a flower
-        // spawned a moment ago (still small, near the hill line) sits
-        // later in the DOM than an older, bigger, closer one - and paints
-        // on top of it, which reads as a tiny flower floating in front of
-        // a bigger one. Keying z-index to progress keeps paint order
-        // matching visual depth regardless of spawn order.
-        flower.el.style.zIndex = Math.round(progress * 1000);
-
-        if (progress >= 1) {
+        if (place.depth <= 1) {
             flower.el.remove();
             activeFlowers.splice(i, 1);
         }
@@ -1368,30 +1507,7 @@ function placeStaticGroundTiles() {
         groundTilePool.push(tile);
     }
 
-    let cursor = GROUND_BAND_TOP - GROUND_PATTERN_HEIGHT;
-    let typeIndex = 0;
-    let poolIndex = 0;
-
-    while (cursor < 100 && poolIndex < groundTilePool.length) {
-
-        const type = GROUND_TILE_TYPES[typeIndex % GROUND_TILE_TYPES.length];
-        const tileEl = groundTilePool[poolIndex];
-
-        tileEl.style.backgroundImage = 'url("' + type.src + '")';
-        tileEl.style.backgroundColor = type.color;
-        tileEl.dataset.src = type.src;
-        tileEl.style.display = "block";
-        tileEl.style.top = (cursor - GROUND_TILE_OVERLAP) + "%";
-        tileEl.style.height = (type.heightPct + GROUND_TILE_OVERLAP) + "%";
-
-        cursor += type.heightPct;
-        typeIndex++;
-        poolIndex++;
-    }
-
-    for (; poolIndex < groundTilePool.length; poolIndex++) {
-        groundTilePool[poolIndex].style.display = "none";
-    }
+    layoutGroundTiles(0);
 }
 
 // --- Static pre-game scenery (2026-09-22, per Kayla) ---
@@ -1404,10 +1520,6 @@ function placeStaticGroundTiles() {
 // (beginRide()), they never touch these. beginRide() removes every
 // .staticScenery element at the same moment the real spawners take over,
 // so there's no seam where two versions of the same tree coexist.
-const STATIC_TREE_PROGRESS = [0.15, 0.42, 0.72];
-const STATIC_TREE_LEFT = [true, false, true];
-const STATIC_FLOWER_PROGRESS = [0.25, 0.5, 0.65, 0.85];
-const STATIC_FLOWER_LEFT = [false, true, false, true];
 
 // Evenly spaced trip-progress values for the frozen yellow center-line
 // dashes shown before motion starts (intro popup, first tutorial card) -
@@ -1423,13 +1535,13 @@ function placeStaticDashes() {
 
     for (let i = 0; i < STATIC_DASH_COUNT; i++) {
         const progress = (i + 0.5) / STATIC_DASH_COUNT;
-        const eased = easeInPerspective(progress);
+        const place = dashPlacementAtAge(progress * DASH_TRAVEL_MS);
         const el = document.createElement("div");
         el.className = "ambientDash staticScenery";
         el.dataset.progress = progress;
-        el.style.top = lerp(DASH_HORIZON_Y, DASH_GROUND_Y, eased) + "%";
-        el.style.width = lerp(DASH_WIDTH_FAR, DASH_WIDTH_NEAR, eased) + "%";
-        el.style.height = lerp(DASH_HEIGHT_FAR, DASH_HEIGHT_NEAR, eased) + "%";
+        el.style.top = place.y + "%";
+        el.style.width = place.width + "%";
+        el.style.height = place.height + "%";
         roadStripeLayer.appendChild(el);
     }
 }
@@ -1443,65 +1555,33 @@ function placeStaticScenery() {
         return;
     }
 
-    STATIC_TREE_PROGRESS.forEach(function (progress, i) {
-
-        const isLeft = STATIC_TREE_LEFT[i % STATIC_TREE_LEFT.length];
-        const eased = easeInPerspective(progress);
-
-        const y = lerp(TREE_HORIZON_Y, TREE_GROUND_Y, eased);
-        const outset = lerp(TREE_OUTSET_FAR, TREE_OUTSET_NEAR, eased) + TREE_JITTER_MAX * 0.4;
-        const x = treeLaneX(y, outset, isLeft);
-        const width = lerp(TREE_WIDTH_FAR, TREE_WIDTH_NEAR, eased);
-
-        const spot = document.createElement("div");
-        spot.className = "treeSpot staticScenery";
-        spot.style.left = x + "%";
-        spot.style.top = y + "%";
-        spot.style.width = width + "%";
-        spot.style.zIndex = Math.round(progress * 1000);
-
-        const img = document.createElement("img");
-        img.className = "treeDecor";
-        img.src = "images/tree.svg";
-        img.alt = "";
-        // No animationDuration/Delay set (unlike spawnAmbientTree) - these
-        // are meant to read as genuinely still, not gently swaying.
-
-        spot.appendChild(img);
-        ambientLayer.appendChild(spot);
-    });
-
-    STATIC_FLOWER_PROGRESS.forEach(function (progress, i) {
-
-        const isLeft = STATIC_FLOWER_LEFT[i % STATIC_FLOWER_LEFT.length];
-        const eased = easeInPerspective(progress);
-        const src = FLOWER_ASSETS[i % FLOWER_ASSETS.length];
-        const isPatch = src === PATCH_ASSET;
-
-        const y = lerp(FLOWER_HORIZON_Y, FLOWER_GROUND_Y, eased);
-        const width = isPatch
-            ? lerp(PATCH_WIDTH_FAR, PATCH_WIDTH_NEAR, eased)
-            : lerp(FLOWER_WIDTH_FAR, FLOWER_WIDTH_NEAR, eased);
-        const outset = Math.max(width / 2 + 1, lerp(FLOWER_OUTSET_FAR, FLOWER_OUTSET_NEAR, eased) + FLOWER_JITTER_MAX * 0.3);
-        const x = treeLaneX(y, outset, isLeft);
-
-        const spot = document.createElement("div");
-        spot.className = "flowerSpot staticScenery";
-        spot.style.left = x + "%";
-        spot.style.top = y + "%";
-        spot.style.width = width + "%";
-        spot.style.zIndex = Math.round(progress * 1000);
-
-        const img = document.createElement("img");
-        img.className = "flowerDecor";
-        img.src = src;
-        img.alt = "";
-
-        spot.appendChild(img);
-        ambientLayer.appendChild(spot);
-    });
+    prefillAmbientScenery();
 }
 
+// 2026-09-23 (per Kayla: "when you first start, there should already be
+// some trees and stuff around you"): plants trees and flowers at every
+// point along the road exactly where the live spawners would have put
+// them if they'd already been running - same spacing, alternating sides,
+// real entries in activeTrees/activeFlowers with a back-dated age - so
+// the road looks full from the first frame (frozen behind the intro
+// popup) and they simply keep rolling once motion starts. The spawners'
+// own first spawn (age 0, at the hill line) continues the pattern.
+function prefillAmbientScenery() {
+
+    const tripMs = sceneAgeAtY(SCENE_NEAR_Y);
+
+    for (let k = 1; k * TREE_SPAWN_INTERVAL_MS < tripMs; k++) {
+        // k = 1 is the spawn just before the next live one, so it's on the
+        // opposite side from treeSpawnNextIsLeft, and so on alternating.
+        const isLeft = (k % 2 === 1) ? !treeSpawnNextIsLeft : treeSpawnNextIsLeft;
+        spawnAmbientTree(k * TREE_SPAWN_INTERVAL_MS, isLeft);
+    }
+
+    for (let k = 1; k * FLOWER_SPAWN_INTERVAL_MS < tripMs; k++) {
+        const isLeft = (k % 2 === 1) ? !flowerSpawnNextIsLeft : flowerSpawnNextIsLeft;
+        spawnAmbientFlower(k * FLOWER_SPAWN_INTERVAL_MS, isLeft);
+    }
+}
 
 /* ================= QUESTIONS (item popup) ================= */
 
@@ -1622,27 +1702,34 @@ function showNextItem() {
     showSignsForCurrentItem();
 }
 
-// Correct/wrong feedback now lives on the sign itself (see
-// resolveSignsFeedback/flyAwaySign) - there's no sign to light up for a
-// miss, though, since the scooter never landed on either one, so the
-// item popup box is still what flashes red for that one case.
-function flashItemPopupMiss() {
+// The caught sign fills solid green/red (resolveSignsFeedback/flyAwaySign)
+// and the item popup rings to match: "correct" = green, "wrong" or "miss"
+// = red (a miss has no caught sign, so the popup ring is its only cue).
+const ITEM_POPUP_FEEDBACK_CLASSES = ["itemPopup--correct", "itemPopup--wrong", "itemPopup--miss"];
+let itemPopupFeedbackTimer = null;
+
+function flashItemPopup(kind) {
 
     if (!itemPopup) {
         return;
     }
 
     // "pop" (added whenever the item text last changed) has higher CSS
-    // specificity than .itemPopup--miss (.itemPopup.pop vs.
-    // .itemPopup--miss), so if it's left on, it silently wins the cascade
+    // specificity than the feedback classes (.itemPopup.pop vs.
+    // .itemPopup--x), so if it's left on, it silently wins the cascade
     // and blocks the color animation entirely. Clear it here too.
-    itemPopup.classList.remove("pop", "itemPopup--miss");
+    itemPopup.classList.remove("pop", ...ITEM_POPUP_FEEDBACK_CLASSES);
     void itemPopup.offsetWidth;
-    itemPopup.classList.add("itemPopup--miss");
+    itemPopup.classList.add("itemPopup--" + kind);
 
-    setTimeout(function () {
-        itemPopup.classList.remove("itemPopup--miss");
+    clearTimeout(itemPopupFeedbackTimer);
+    itemPopupFeedbackTimer = setTimeout(function () {
+        itemPopup.classList.remove(...ITEM_POPUP_FEEDBACK_CLASSES);
     }, 900);
+}
+
+function flashItemPopupMiss() {
+    flashItemPopup("miss");
 }
 
 function resolveItem() {
@@ -1680,15 +1767,18 @@ function resolveItem() {
 
         spawnCorrectStars();
         resolveSignsFeedback(chosenLane, "correct");
+        flashItemPopup("correct");
 
     } else {
 
         wrongCount++;
 
         resolveSignsFeedback(chosenLane, "wrong");
+        flashItemPopup("wrong");
     }
 
-    updateStars();
+    // (A correct catch's new dollar amount shows when its stars land -
+    // see spawnCorrectStars - not here.)
 
     currentItem = null;
     roadSignAnimFrame = null;
@@ -1715,10 +1805,12 @@ function resolveTutorialDemoItem(chosenLane) {
 
         spawnCorrectStars();
         resolveSignsFeedback(chosenLane, "correct");
+        flashItemPopup("correct");
 
     } else {
 
         resolveSignsFeedback(chosenLane, "wrong");
+        flashItemPopup("wrong");
     }
 
     currentItem = null;
@@ -1732,10 +1824,18 @@ function resolveTutorialDemoItem(chosenLane) {
 // How long a single star's flight takes, and the max random stagger added
 // per star before it launches, so the group doesn't travel as one rigid
 // clump.
-const STAR_FLIGHT_MS = 800;
-const STAR_STAGGER_MAX_MS = 150;
-const STAR_ARC_LIFT_MIN = 50;
-const STAR_ARC_LIFT_MAX = 90;
+// 2026-09-24: bigger, more dramatic burst - more stars, wider scatter,
+// taller arcs, a spin, and a bigger launch pop.
+const STAR_FLIGHT_MS = 900;
+const STAR_STAGGER_MAX_MS = 180;
+const STAR_ARC_LIFT_MIN = 90;
+const STAR_ARC_LIFT_MAX = 170;
+const STAR_COUNT = 12;
+const STAR_SCATTER_PX = 40;
+// The moment the (staggered-earliest) stars visually reach the card -
+// they fade/shrink over the last ~20% of the flight - so the card pops
+// and the dollar amount ticks up right as they hit.
+const STAR_LAND_MS = Math.round(STAR_FLIGHT_MS * 0.88);
 
 // An element's center, in pixels relative to referenceEl's own top-left
 // corner - lets two elements that live in completely different parts of
@@ -1775,12 +1875,12 @@ function easeInOutCubic(t) {
 // steady size mid-flight, shrink away as it lands.
 function starScaleAt(p) {
     if (p < 0.18) {
-        return lerp(0.4, 1.15, p / 0.18);
+        return lerp(0.4, 1.6, p / 0.18);
     }
     if (p < 0.55) {
-        return lerp(1.15, 0.85, (p - 0.18) / 0.37);
+        return lerp(1.6, 1.0, (p - 0.18) / 0.37);
     }
-    return lerp(0.85, 0.3, (p - 0.55) / 0.45);
+    return lerp(1.0, 0.45, (p - 0.55) / 0.45);
 }
 
 function starOpacityAt(p) {
@@ -1814,6 +1914,9 @@ function launchStar(startX, startY, controlX, controlY, endX, endY) {
     star.innerHTML = randomStarSVG();
     star.style.opacity = "0";
 
+    // Each star spins a random amount (either direction) over its flight.
+    const spin = (Math.random() < 0.5 ? -1 : 1) * (180 + Math.random() * 360);
+
     starFlightLayer.appendChild(star);
 
     const startTime = performance.now();
@@ -1834,7 +1937,7 @@ function launchStar(startX, startY, controlX, controlY, endX, endY) {
         star.style.left = x + "px";
         star.style.top = y + "px";
         star.style.opacity = starOpacityAt(rawProgress).toFixed(2);
-        star.style.transform = `translate(-50%, -50%) scale(${starScaleAt(rawProgress).toFixed(3)})`;
+        star.style.transform = `translate(-50%, -50%) scale(${starScaleAt(rawProgress).toFixed(3)}) rotate(${(spin * eased).toFixed(1)}deg)`;
 
         if (rawProgress < 1) {
             requestAnimationFrame(step);
@@ -1859,14 +1962,12 @@ function spawnCorrectStars() {
     const origin = centerRelativeTo(scooter, starFlightLayer);
     const destination = centerRelativeTo(starsBox, starFlightLayer);
 
-    const starCount = 7;
-
-    for (let i = 0; i < starCount; i++) {
+    for (let i = 0; i < STAR_COUNT; i++) {
 
         // A little scatter around the scooter at launch, like a small
         // burst, before the group arcs up and over to the card.
-        const startX = origin.x + (Math.random() * 2 - 1) * 18;
-        const startY = origin.y + (Math.random() * 2 - 1) * 18;
+        const startX = origin.x + (Math.random() * 2 - 1) * STAR_SCATTER_PX;
+        const startY = origin.y + (Math.random() * 2 - 1) * STAR_SCATTER_PX;
         const lift = STAR_ARC_LIFT_MIN + Math.random() * (STAR_ARC_LIFT_MAX - STAR_ARC_LIFT_MIN);
 
         const controlX = (startX + destination.x) / 2;
@@ -1879,18 +1980,23 @@ function spawnCorrectStars() {
         }, delay);
     }
 
-    // A quick bump on the card itself, timed to when the stars actually
-    // land rather than the instant they're launched.
+    // Stars land -> the card pops AND the dollar amount changes at that
+    // same instant (resolveItem deliberately skips updateStars() on a
+    // correct catch so the number doesn't jump before the stars arrive).
+    // updateStars() reads the live `stars` count, so this is always right
+    // even if the ride ended/reset in between.
     setTimeout(function () {
+        updateStars();
+
         starsBox.classList.remove("starsBox--pulse");
         void starsBox.offsetWidth;
         starsBox.classList.add("starsBox--pulse");
 
         setTimeout(function () {
             starsBox.classList.remove("starsBox--pulse");
-        }, 400);
+        }, 600);
 
-    }, STAR_FLIGHT_MS - 100);
+    }, STAR_LAND_MS);
 }
 
 
@@ -2225,7 +2331,7 @@ function resetGame() {
 
     if (itemPopup) {
         clearItemPopupContent();
-        itemPopup.classList.remove("pop", "itemPopup--miss");
+        itemPopup.classList.remove("pop", ...ITEM_POPUP_FEEDBACK_CLASSES);
     }
 
     if (finishScreen) {
@@ -2279,7 +2385,7 @@ function beginRide() {
 
     if (itemPopup) {
         clearItemPopupContent();
-        itemPopup.classList.remove("pop", "itemPopup--miss");
+        itemPopup.classList.remove("pop", ...ITEM_POPUP_FEEDBACK_CLASSES);
     }
 
     gameRunning = true;
@@ -2732,7 +2838,7 @@ function skipTutorial() {
 
     if (itemPopup) {
         clearItemPopupContent();
-        itemPopup.classList.remove("pop", "itemPopup--miss");
+        itemPopup.classList.remove("pop", ...ITEM_POPUP_FEEDBACK_CLASSES);
     }
 
     startRealGame();

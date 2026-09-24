@@ -19,8 +19,11 @@
     /* Feedback colors - correct/wrong signal on the item popup, kept
        apart from the blue brand palette so they read unmistakably as
        "yes" and "no" at a glance. */
-    --correct-green: #2AA84A;
-    --wrong-red:     #E0293E;
+    /* 2026-09-24 feedback: brighter so right/wrong is unmistakable - the
+       caught NEED/WANT sign now fills solid with these, and the item
+       popup gets a matching ring. */
+    --correct-green: #1FD35A;
+    --wrong-red:     #FF2A3D;
 
     --font-brand: "Inter", Arial, Helvetica, sans-serif;
 
@@ -364,12 +367,17 @@ body {
    in beginRide() (see game.js), same trigger point the JS-driven ambient
    road motion (ground/trees/flowers/dashes) now waits for too. */
 .sunDecor,
-.cloudDecor {
+.cloudDecor,
+.treeDecor {
     animation-play-state: paused;
 }
 
+/* .treeDecor added 2026-09-23: the pre-filled roadside trees (see
+   prefillAmbientScenery in game.js) are real live trees now, so their
+   sway waits for the ride to start too. */
 #game.riding .sunDecor,
-#game.riding .cloudDecor {
+#game.riding .cloudDecor,
+#game.riding .treeDecor {
     animation-play-state: running;
 }
 
@@ -545,7 +553,7 @@ body {
 
 /* The sign the player actually lands on gets cloned (see flyAwaySign() in
    game.js) and handed this animation instead of just vanishing: it lights
-   its own border/glow up green or red right where it caught the scooter,
+   up solid green or red (whole box, white text) right where it caught the scooter,
    then flies straight up and fades out - the same motion the old
    word-toasts used, just carried by the sign itself now. --catchScale is
    set inline by JS to whatever scale the sign had actually grown to at
@@ -553,36 +561,57 @@ body {
 
 .roadSign--flyCorrect,
 .roadSign--flyWrong {
-    animation-duration: 0.9s;
-    animation-timing-function: ease;
+    animation-duration: 1.1s;
     animation-fill-mode: forwards;
 }
 
+/* 2026-09-24: correct = a bouncy "yes!" pop (quick overshoot, settle,
+   brief hold) before it floats up; wrong = a head-shake "no" left/right
+   while it floats up. Both fill the whole box solid. Keep the 1.1s in
+   sync with the removal setTimeout in flyAwaySign() in game.js. */
 .roadSign--flyCorrect {
     animation-name: roadSignFlyCorrect;
+    animation-timing-function: ease-out;
 }
 
 .roadSign--flyWrong {
     animation-name: roadSignFlyWrong;
+    animation-timing-function: linear;
 }
 
 @keyframes roadSignFlyCorrect {
     0% {
         transform: translate(-50%, -50%) scale(var(--catchScale, 2.2));
         opacity: 1;
-        border-color: var(--white);
-        box-shadow: 0 8px 16px rgba(10, 23, 36, 0.25);
     }
-    18% {
-        transform: translate(-50%, -50%) scale(var(--catchScale, 2.2));
-        border-color: var(--correct-green);
-        box-shadow: 0 0 0 14px rgba(42, 168, 74, 0.4), 0 8px 16px rgba(10, 23, 36, 0.25);
+    14% {
+        transform: translate(-50%, -50%) scale(calc(var(--catchScale, 2.2) * 1.32));
+        background: var(--correct-green);
+        color: var(--white);
+        border-color: var(--white);
+        box-shadow: 0 0 0 10px rgba(31, 211, 90, 0.55), 0 0 26px 8px rgba(31, 211, 90, 0.7), 0 8px 16px rgba(10, 23, 36, 0.25);
+    }
+    24% {
+        transform: translate(-50%, -50%) scale(calc(var(--catchScale, 2.2) * 0.96));
+    }
+    32% {
+        transform: translate(-50%, -50%) scale(calc(var(--catchScale, 2.2) * 1.1));
+    }
+    42% {
+        transform: translate(-50%, -50%) scale(calc(var(--catchScale, 2.2) * 1.06));
+        opacity: 1;
+        background: var(--correct-green);
+        color: var(--white);
+        border-color: var(--white);
+        box-shadow: 0 0 0 10px rgba(31, 211, 90, 0.45), 0 0 26px 8px rgba(31, 211, 90, 0.55), 0 8px 16px rgba(10, 23, 36, 0.25);
     }
     100% {
-        transform: translate(-50%, -220%) scale(var(--catchScale, 2.2));
+        transform: translate(-50%, -240%) scale(calc(var(--catchScale, 2.2) * 1.06));
         opacity: 0;
-        border-color: var(--correct-green);
-        box-shadow: 0 0 0 14px rgba(42, 168, 74, 0), 0 8px 16px rgba(10, 23, 36, 0);
+        background: var(--correct-green);
+        color: var(--white);
+        border-color: var(--white);
+        box-shadow: 0 0 0 10px rgba(31, 211, 90, 0), 0 0 26px 8px rgba(31, 211, 90, 0), 0 8px 16px rgba(10, 23, 36, 0);
     }
 }
 
@@ -590,19 +619,34 @@ body {
     0% {
         transform: translate(-50%, -50%) scale(var(--catchScale, 2.2));
         opacity: 1;
-        border-color: var(--white);
-        box-shadow: 0 8px 16px rgba(10, 23, 36, 0.25);
     }
-    18% {
+    8% {
         transform: translate(-50%, -50%) scale(var(--catchScale, 2.2));
-        border-color: var(--wrong-red);
-        box-shadow: 0 0 0 14px rgba(224, 41, 62, 0.4), 0 8px 16px rgba(10, 23, 36, 0.25);
+        background: var(--wrong-red);
+        color: var(--white);
+        border-color: var(--white);
+        box-shadow: 0 0 0 10px rgba(255, 42, 61, 0.55), 0 0 26px 8px rgba(255, 42, 61, 0.7), 0 8px 16px rgba(10, 23, 36, 0.25);
+    }
+    16% { transform: translate(calc(-50% - 32px), -62%) scale(var(--catchScale, 2.2)); }
+    26% { transform: translate(calc(-50% + 30px), -80%) scale(var(--catchScale, 2.2)); }
+    36% { transform: translate(calc(-50% - 26px), -98%) scale(var(--catchScale, 2.2)); }
+    46% { transform: translate(calc(-50% + 21px), -116%) scale(var(--catchScale, 2.2)); }
+    56% { transform: translate(calc(-50% - 15px), -134%) scale(var(--catchScale, 2.2)); opacity: 1; }
+    66% { transform: translate(calc(-50% + 9px), -152%) scale(var(--catchScale, 2.2)); }
+    76% {
+        transform: translate(-50%, -170%) scale(var(--catchScale, 2.2));
+        background: var(--wrong-red);
+        color: var(--white);
+        border-color: var(--white);
+        box-shadow: 0 0 0 10px rgba(255, 42, 61, 0.4), 0 0 26px 8px rgba(255, 42, 61, 0.5), 0 8px 16px rgba(10, 23, 36, 0.25);
     }
     100% {
         transform: translate(-50%, -220%) scale(var(--catchScale, 2.2));
         opacity: 0;
-        border-color: var(--wrong-red);
-        box-shadow: 0 0 0 14px rgba(224, 41, 62, 0), 0 8px 16px rgba(10, 23, 36, 0);
+        background: var(--wrong-red);
+        color: var(--white);
+        border-color: var(--white);
+        box-shadow: 0 0 0 10px rgba(255, 42, 61, 0), 0 0 26px 8px rgba(255, 42, 61, 0), 0 8px 16px rgba(10, 23, 36, 0);
     }
 }
 
@@ -693,22 +737,33 @@ body {
     100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
 }
 
-/* Correct/wrong now light up on the NEED/WANT sign the player actually
-   landed on (see .roadSign--flyCorrect/--flyWrong below) rather than
-   here. There's no sign to light up for a miss, though - the scooter
-   never landed on either one - so the item popup box is still what
-   flashes for that one case, in the same red as a wrong sign. Keep this
-   duration in sync with the setTimeout in flashItemPopupMiss() in
+/* Item popup ring (2026-09-24): every outcome now also rings the item
+   popup - green for a correct catch, red for a wrong catch OR a complete
+   miss. Just the border + a glow ring (no fill), so the picture and name
+   stay readable while the caught NEED/WANT sign carries the solid color.
+   Keep the 0.9s in sync with the setTimeout in flashItemPopup() in
    game.js. */
 
-.itemPopup--miss {
-    animation: itemPopupMiss 0.9s ease;
+.itemPopup--correct {
+    animation: itemPopupCorrect 0.9s ease;
 }
 
-@keyframes itemPopupMiss {
+.itemPopup--wrong,
+.itemPopup--miss {
+    animation: itemPopupWrong 0.9s ease;
+}
+
+@keyframes itemPopupCorrect {
+    0% { transform: translate(-50%, -50%) scale(1); border-color: var(--persian-blue); box-shadow: 0 10px 22px rgba(10, 23, 36, 0.3); }
+    18% { transform: translate(-50%, -50%) scale(1.05); border-color: var(--correct-green); box-shadow: 0 0 0 10px rgba(31, 211, 90, 0.45), 0 10px 22px rgba(10, 23, 36, 0.3); }
+    75% { transform: translate(-50%, -50%) scale(1.02); border-color: var(--correct-green); box-shadow: 0 0 0 6px rgba(31, 211, 90, 0.28), 0 10px 22px rgba(10, 23, 36, 0.3); }
+    100% { transform: translate(-50%, -50%) scale(1); border-color: var(--persian-blue); box-shadow: 0 10px 22px rgba(10, 23, 36, 0.3); }
+}
+
+@keyframes itemPopupWrong {
     0% { transform: translate(-50%, -50%) scale(1); border-color: var(--persian-blue); box-shadow: 0 10px 22px rgba(10, 23, 36, 0.3); opacity: 1; }
-    18% { transform: translate(-50%, -50%) scale(0.94); border-color: var(--wrong-red); box-shadow: 0 0 0 10px rgba(224, 41, 62, 0.3), 0 10px 22px rgba(10, 23, 36, 0.3); opacity: 0.88; }
-    75% { transform: translate(-50%, -50%) scale(0.97); border-color: var(--wrong-red); box-shadow: 0 0 0 6px rgba(224, 41, 62, 0.18), 0 10px 22px rgba(10, 23, 36, 0.3); opacity: 0.92; }
+    18% { transform: translate(-50%, -50%) scale(0.94); border-color: var(--wrong-red); box-shadow: 0 0 0 10px rgba(255, 42, 61, 0.45), 0 10px 22px rgba(10, 23, 36, 0.3); opacity: 0.92; }
+    75% { transform: translate(-50%, -50%) scale(0.97); border-color: var(--wrong-red); box-shadow: 0 0 0 6px rgba(255, 42, 61, 0.28), 0 10px 22px rgba(10, 23, 36, 0.3); opacity: 0.95; }
     100% { transform: translate(-50%, -50%) scale(1); border-color: var(--persian-blue); box-shadow: 0 10px 22px rgba(10, 23, 36, 0.3); opacity: 1; }
 }
 
@@ -757,8 +812,10 @@ body {
     position: absolute;
     pointer-events: none;
 
-    width: 26px;
-    height: 26px;
+    /* 2026-09-24: bigger + more dramatic (was 26px) */
+    width: 46px;
+    height: 46px;
+    filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.9)) drop-shadow(0 2px 3px rgba(10, 23, 36, 0.25));
 
     will-change: top, left, transform, opacity;
 }
@@ -769,16 +826,32 @@ body {
     height: 100%;
 }
 
-/* A quick bump on the dollars card itself, timed to when the stars
-   actually land rather than the instant they're spawned. */
+/* The dollars card's "got it!" pop, fired the moment the stars land -
+   the dollar amount changes at the same instant (spawnCorrectStars() in
+   game.js). 2026-09-24: bigger, bouncier, with a gold glow ring, and the
+   number itself gets its own pop. Keep 600ms in sync with the JS
+   setTimeout. */
 .starsBox--pulse {
-    animation: starsBoxPulse 400ms ease;
+    animation: starsBoxPulse 600ms cubic-bezier(0.3, 1.6, 0.5, 1);
 }
 
 @keyframes starsBoxPulse {
-    0% { transform: scale(1); }
-    35% { transform: scale(1.12); }
-    100% { transform: scale(1); }
+    0% { transform: scale(1); box-shadow: 0 5px 10px rgba(10, 23, 36, 0.14); }
+    30% { transform: scale(1.28) rotate(-3deg); box-shadow: 0 0 0 8px rgba(255, 205, 60, 0.6), 0 0 30px 10px rgba(255, 205, 60, 0.55), 0 5px 10px rgba(10, 23, 36, 0.14); }
+    55% { transform: scale(0.95) rotate(1.5deg); }
+    75% { transform: scale(1.06) rotate(0deg); box-shadow: 0 0 0 4px rgba(255, 205, 60, 0.3), 0 0 16px 4px rgba(255, 205, 60, 0.25), 0 5px 10px rgba(10, 23, 36, 0.14); }
+    100% { transform: scale(1); box-shadow: 0 5px 10px rgba(10, 23, 36, 0.14); }
+}
+
+.starsBox--pulse .statValue {
+    display: inline-block;
+    animation: starsValuePop 600ms ease-out;
+}
+
+@keyframes starsValuePop {
+    0% { transform: scale(1); color: inherit; }
+    30% { transform: scale(1.3); color: var(--correct-green); }
+    100% { transform: scale(1); color: inherit; }
 }
 
 
